@@ -1,0 +1,5 @@
+DROP TABLE IF EXISTS outbox;
+DROP TABLE IF EXISTS processed_messages;
+DROP TABLE IF EXISTS balances;
+DROP TABLE IF EXISTS accounts;
+DROP TABLE IF EXISTS customers;
