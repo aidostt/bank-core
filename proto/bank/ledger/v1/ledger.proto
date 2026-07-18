@@ -1,0 +1,174 @@
+syntax = "proto3";
+
+package bank.ledger.v1;
+
+import "bank/common/v1/money.proto";
+import "google/protobuf/timestamp.proto";
+
+// The source of truth for money (ADR-0006). Double-entry journal with holds,
+// materialized versioned balances, transactional outbox.
+// All mutating RPCs are idempotent by (reference_type, reference_id).
+service LedgerService {
+  // Idempotent by external_account_id.
+  rpc CreateAccount(CreateAccountRequest) returns (CreateAccountResponse);
+  // Idempotent by (reference_type, reference_id).
+  rpc PlaceHold(PlaceHoldRequest) returns (PlaceHoldResponse);
+  // Idempotent: releasing a released hold returns it unchanged.
+  rpc ReleaseHold(ReleaseHoldRequest) returns (ReleaseHoldResponse);
+  // Idempotent by (reference_type, reference_id); optional hold_id to capture.
+  rpc PostTransaction(PostTransactionRequest) returns (PostTransactionResponse);
+  // NOT_FOUND if absent — the transfer recovery worker relies on this.
+  rpc GetTransactionByReference(GetTransactionByReferenceRequest) returns (GetTransactionByReferenceResponse);
+  rpc GetBalances(GetBalancesRequest) returns (GetBalancesResponse);
+  // Time range required (partition pruning, ADR-0017); cursor pagination.
+  rpc ListPostings(ListPostingsRequest) returns (ListPostingsResponse);
+}
+
+enum LedgerAccountType {
+  LEDGER_ACCOUNT_TYPE_UNSPECIFIED = 0;
+  LEDGER_ACCOUNT_TYPE_CUSTOMER = 1;
+  LEDGER_ACCOUNT_TYPE_INTERNAL = 2;
+}
+
+enum HoldStatus {
+  HOLD_STATUS_UNSPECIFIED = 0;
+  HOLD_STATUS_ACTIVE = 1;
+  HOLD_STATUS_CAPTURED = 2;
+  HOLD_STATUS_RELEASED = 3;
+}
+
+// Reference to a ledger account. Customer accounts are addressed by the
+// account-service account id (external_account_id); internal accounts
+// (cash_in_kzt, cash_in_usd, fx_position_kzt, fx_position_usd) by code.
+message AccountRef {
+  oneof ref {
+    string external_account_id = 1;
+    string internal_code = 2;
+    string ledger_account_id = 3;
+  }
+}
+
+message LedgerAccount {
+  string id = 1;
+  string external_account_id = 2;
+  string internal_code = 3;
+  LedgerAccountType type = 4;
+  string currency = 5;
+  string status = 6;
+}
+
+message CreateAccountRequest {
+  string external_account_id = 1;
+  string currency = 2;
+}
+
+message CreateAccountResponse {
+  LedgerAccount account = 1;
+}
+
+message PlaceHoldRequest {
+  AccountRef account = 1;
+  bank.common.v1.Money amount = 2;
+  string reference_type = 3;
+  string reference_id = 4;
+  // 0 means server default (10m).
+  int64 expires_in_seconds = 5;
+}
+
+message Hold {
+  string id = 1;
+  string account_id = 2;
+  bank.common.v1.Money amount = 3;
+  string reference_type = 4;
+  string reference_id = 5;
+  HoldStatus status = 6;
+  google.protobuf.Timestamp expires_at = 7;
+}
+
+message PlaceHoldResponse {
+  Hold hold = 1;
+}
+
+message ReleaseHoldRequest {
+  string hold_id = 1;
+}
+
+message ReleaseHoldResponse {
+  Hold hold = 1;
+}
+
+// Signed amount in minor units: negative = debit, positive = credit.
+message PostingSpec {
+  AccountRef account = 1;
+  bank.common.v1.Money amount = 2;
+}
+
+message PostTransactionRequest {
+  string reference_type = 1;
+  string reference_id = 2;
+  // Optional: capture this hold in the same transaction.
+  string hold_id = 3;
+  repeated PostingSpec postings = 4;
+}
+
+message Posting {
+  string id = 1;
+  string entry_id = 2;
+  string account_id = 3;
+  string external_account_id = 4;
+  bank.common.v1.Money amount = 5;
+  google.protobuf.Timestamp occurred_at = 6;
+}
+
+message JournalEntry {
+  string id = 1;
+  string reference_type = 2;
+  string reference_id = 3;
+  google.protobuf.Timestamp occurred_at = 4;
+  repeated Posting postings = 5;
+}
+
+message PostTransactionResponse {
+  JournalEntry entry = 1;
+}
+
+message GetTransactionByReferenceRequest {
+  string reference_type = 1;
+  string reference_id = 2;
+}
+
+message GetTransactionByReferenceResponse {
+  JournalEntry entry = 1;
+}
+
+message GetBalancesRequest {
+  repeated AccountRef accounts = 1;
+}
+
+message AccountBalance {
+  string account_id = 1;
+  string external_account_id = 2;
+  string currency = 3;
+  int64 balance = 4;
+  int64 held = 5;
+  int64 available = 6;
+  int64 version = 7;
+  google.protobuf.Timestamp as_of = 8;
+}
+
+message GetBalancesResponse {
+  repeated AccountBalance balances = 1;
+}
+
+message ListPostingsRequest {
+  AccountRef account = 1;
+  google.protobuf.Timestamp from = 2;
+  google.protobuf.Timestamp to = 3;
+  int32 page_size = 4;
+  string cursor = 5;
+}
+
+message ListPostingsResponse {
+  repeated Posting postings = 1;
+  string next_cursor = 2;
+}

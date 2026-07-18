@@ -1,0 +1,102 @@
+syntax = "proto3";
+
+package bank.transfer.v1;
+
+import "bank/common/v1/money.proto";
+import "google/protobuf/timestamp.proto";
+
+// Saga orchestrator for money movement (ADR-0010, ADR-0012).
+// Customer claims and the mandatory idempotency key travel in gRPC metadata.
+service TransferService {
+  // Returns after the saga completes synchronously in the happy path; on an
+  // ambiguous downstream timeout returns the transfer in its current state
+  // (POSTING/HELD) — clients poll GetTransfer (202-semantics at the gateway).
+  rpc CreateTransfer(CreateTransferRequest) returns (CreateTransferResponse);
+  rpc GetTransfer(GetTransferRequest) returns (GetTransferResponse);
+  rpc ListTransfers(ListTransfersRequest) returns (ListTransfersResponse);
+  rpc GetRates(GetRatesRequest) returns (GetRatesResponse);
+}
+
+enum TransferType {
+  TRANSFER_TYPE_UNSPECIFIED = 0;
+  TRANSFER_TYPE_TOPUP = 1;
+  TRANSFER_TYPE_INTERNAL = 2;
+  TRANSFER_TYPE_P2P = 3;
+}
+
+enum TransferState {
+  TRANSFER_STATE_UNSPECIFIED = 0;
+  TRANSFER_STATE_CREATED = 1;
+  TRANSFER_STATE_VALIDATING = 2;
+  TRANSFER_STATE_HELD = 3;
+  TRANSFER_STATE_POSTING = 4;
+  TRANSFER_STATE_COMPLETED = 5;
+  TRANSFER_STATE_RELEASING = 6;
+  TRANSFER_STATE_FAILED = 7;
+}
+
+message TransferView {
+  string id = 1;
+  TransferType type = 2;
+  TransferState state = 3;
+  string customer_id = 4;
+  string from_account_id = 5;
+  string to_account_id = 6;
+  bank.common.v1.Money amount = 7;
+  // Set for cross-currency transfers: what the beneficiary receives.
+  bank.common.v1.Money counter_amount = 8;
+  // Decimal string, e.g. "478.250000" — the locked rate (audit).
+  string applied_rate = 9;
+  string reason = 10;
+  google.protobuf.Timestamp created_at = 11;
+  google.protobuf.Timestamp updated_at = 12;
+}
+
+message CreateTransferRequest {
+  TransferType type = 1;
+  // Required for INTERNAL and P2P; empty for TOPUP (funded from cash_in).
+  string from_account_id = 2;
+  // INTERNAL and TOPUP destination.
+  string to_account_id = 3;
+  // P2P destination, resolved via account-service.
+  string to_account_number = 4;
+  // Amount in the source-account currency (destination currency for TOPUP).
+  bank.common.v1.Money amount = 5;
+}
+
+message CreateTransferResponse {
+  TransferView transfer = 1;
+}
+
+message GetTransferRequest {
+  string transfer_id = 1;
+}
+
+message GetTransferResponse {
+  TransferView transfer = 1;
+}
+
+message ListTransfersRequest {
+  int32 page_size = 1;
+  string cursor = 2;
+}
+
+message ListTransfersResponse {
+  repeated TransferView transfers = 1;
+  string next_cursor = 2;
+}
+
+message Rate {
+  // e.g. "USDKZT".
+  string pair = 1;
+  // Decimal strings, e.g. "478.250000": bank buys / sells the base currency.
+  string buy = 2;
+  string sell = 3;
+  google.protobuf.Timestamp valid_from = 4;
+}
+
+message GetRatesRequest {}
+
+message GetRatesResponse {
+  repeated Rate rates = 1;
+}

@@ -1,0 +1,71 @@
+syntax = "proto3";
+
+package bank.events.v1;
+
+import "bank/account/v1/account.proto";
+import "bank/ledger/v1/ledger.proto";
+import "bank/transfer/v1/transfer.proto";
+import "google/protobuf/any.proto";
+import "google/protobuf/timestamp.proto";
+
+// Envelope for every Kafka event (architecture §5). event_id is UUIDv7 from
+// the producer and drives consumer dedup (ADR-0009).
+message EventEnvelope {
+  string event_id = 1;
+  google.protobuf.Timestamp occurred_at = 2;
+  string request_id = 3;
+  google.protobuf.Any payload = 4;
+}
+
+// Topic ledger.transactions, key = affected account id: one event per
+// affected account carrying that account's {balance_after, version} plus the
+// full entry — per-account ordering for projections.
+message TransactionPosted {
+  bank.ledger.v1.JournalEntry entry = 1;
+  string account_id = 2;
+  string external_account_id = 3;
+  string currency = 4;
+  int64 balance_after = 5;
+  int64 version = 6;
+}
+
+// Topic transfers.status, key = transfer_id.
+message TransferCompleted {
+  bank.transfer.v1.TransferView transfer = 1;
+  string applied_rate = 2;
+}
+
+message TransferFailed {
+  bank.transfer.v1.TransferView transfer = 1;
+  string reason = 2;
+}
+
+// Topic accounts.events, key = account_id.
+message AccountOpened {
+  bank.account.v1.Account account = 1;
+}
+
+message AccountFrozen {
+  string account_id = 1;
+  string reason = 2;
+}
+
+message AccountUnfrozen {
+  string account_id = 1;
+}
+
+// Topic customers.registered (emitted by identity, consumed by account — M2).
+message CustomerRegistered {
+  string user_id = 1;
+  string email = 2;
+  string name = 3;
+}
+
+// Topic fraud.alerts, key = customer_id (antifraud — M2).
+message FraudAlertRaised {
+  string customer_id = 1;
+  string transfer_id = 2;
+  string rule = 3;
+  string severity = 4;
+  string details = 5;
+}

@@ -1,0 +1,127 @@
+syntax = "proto3";
+
+package bank.account.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// Customer accounts registry + balance read model (ADR-0006).
+// Caller identity (user id, roles) travels in gRPC metadata claims injected by
+// the gateway; ownership is re-asserted here for customer-role callers.
+service AccountService {
+  // Opens an account for the calling customer; synchronously creates the
+  // ledger mirror (idempotent) before returning.
+  rpc OpenAccount(OpenAccountRequest) returns (OpenAccountResponse);
+  rpc GetAccount(GetAccountRequest) returns (GetAccountResponse);
+  // Own accounts for customer callers; support/admin may pass user_id.
+  rpc ListAccountsByCustomer(ListAccountsByCustomerRequest) returns (ListAccountsByCustomerResponse);
+  // P2P destination lookup by account number; limited fields, any caller.
+  rpc ResolveByNumber(ResolveByNumberRequest) returns (ResolveByNumberResponse);
+  rpc Freeze(FreezeRequest) returns (FreezeResponse);
+  rpc Unfreeze(UnfreezeRequest) returns (UnfreezeResponse);
+  rpc GetBalances(GetBalancesRequest) returns (GetBalancesResponse);
+  // Owner-scoped listing proxied to ledger ListPostings.
+  rpc ListTransactions(ListTransactionsRequest) returns (ListTransactionsResponse);
+}
+
+message Account {
+  string id = 1;
+  string customer_id = 2;
+  // Identity user id of the owner (JWT sub).
+  string user_id = 3;
+  string number = 4;
+  string currency = 5;
+  string status = 6;
+  google.protobuf.Timestamp opened_at = 7;
+}
+
+message Balance {
+  string account_id = 1;
+  int64 balance = 2;
+  int64 held = 3;
+  int64 available = 4;
+  google.protobuf.Timestamp as_of = 5;
+}
+
+message AccountWithBalance {
+  Account account = 1;
+  Balance balance = 2;
+}
+
+message OpenAccountRequest {
+  string currency = 1;
+}
+
+message OpenAccountResponse {
+  Account account = 1;
+}
+
+message GetAccountRequest {
+  string account_id = 1;
+}
+
+message GetAccountResponse {
+  Account account = 1;
+}
+
+message ListAccountsByCustomerRequest {
+  // Empty = caller's own accounts. Support/admin only for other users.
+  string user_id = 1;
+}
+
+message ListAccountsByCustomerResponse {
+  repeated AccountWithBalance accounts = 1;
+}
+
+message ResolveByNumberRequest {
+  string number = 1;
+}
+
+message ResolveByNumberResponse {
+  Account account = 1;
+}
+
+message FreezeRequest {
+  string account_id = 1;
+  string reason = 2;
+}
+
+message FreezeResponse {
+  Account account = 1;
+}
+
+message UnfreezeRequest {
+  string account_id = 1;
+}
+
+message UnfreezeResponse {
+  Account account = 1;
+}
+
+message GetBalancesRequest {
+  repeated string account_ids = 1;
+}
+
+message GetBalancesResponse {
+  repeated Balance balances = 1;
+}
+
+message Transaction {
+  string entry_id = 1;
+  string account_id = 2;
+  int64 amount = 3;
+  string currency = 4;
+  google.protobuf.Timestamp occurred_at = 5;
+}
+
+message ListTransactionsRequest {
+  string account_id = 1;
+  google.protobuf.Timestamp from = 2;
+  google.protobuf.Timestamp to = 3;
+  int32 page_size = 4;
+  string cursor = 5;
+}
+
+message ListTransactionsResponse {
+  repeated Transaction transactions = 1;
+  string next_cursor = 2;
+}

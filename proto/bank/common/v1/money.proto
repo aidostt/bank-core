@@ -1,0 +1,10 @@
+syntax = "proto3";
+
+package bank.common.v1;
+
+// Money in integer minor units (tiyn/cents). Floats for money are forbidden
+// everywhere (CLAUDE.md). Currency is ISO 4217: KZT or USD only.
+message Money {
+  int64 minor_units = 1;
+  string currency = 2;
+}

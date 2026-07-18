@@ -1,0 +1,19 @@
+# local env
+.env
+
+# build artifacts
+bin/
+dist/
+coverage.out
+*.test
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# local volumes / scratch
+*.local

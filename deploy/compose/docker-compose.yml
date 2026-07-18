@@ -1,0 +1,218 @@
+name: bank-core
+
+x-service-defaults: &service-defaults
+  restart: unless-stopped
+  profiles: [core]
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    profiles: [core]
+    environment:
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  redpanda:
+    image: redpandadata/redpanda:v24.2.18
+    profiles: [core]
+    command:
+      - redpanda
+      - start
+      - --mode=dev-container
+      - --smp=1
+      - --memory=1G
+      - --kafka-addr=internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr=internal://redpanda:9092,external://localhost:19092
+    ports:
+      - "19092:19092"
+    volumes:
+      - redpanda-data:/var/lib/redpanda/data
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health --exit-when-healthy || exit 1"]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+
+  redpanda-init:
+    image: redpandadata/redpanda:v24.2.18
+    profiles: [core]
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    # Explicit topics + partition counts (ADR-0008); keys per architecture §5.
+    command:
+      - >
+        rpk topic create
+        ledger.transactions transfers.status accounts.events fraud.alerts
+        --partitions 6 --replicas 1
+        -X brokers=redpanda:9092 || true
+    restart: "no"
+
+  redis:
+    image: redis:7-alpine
+    profiles: [core]
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  toxiproxy:
+    image: ghcr.io/shopify/toxiproxy:2.9.0
+    profiles: [core]
+    command: ["-host=0.0.0.0", "-config=/config/toxiproxy.json"]
+    ports:
+      - "8474:8474"   # toxiproxy admin API (chaos demo, M3)
+    volumes:
+      - ./toxiproxy.json:/config/toxiproxy.json:ro
+
+  identity:
+    <<: *service-defaults
+    build:
+      context: ../..
+      dockerfile: deploy/compose/Dockerfile
+      args: { SERVICE: identity }
+    environment:
+      LOG_LEVEL: info
+      IDENTITY_GRPC_ADDR: :9091
+      IDENTITY_HTTP_ADDR: :8081
+      IDENTITY_DB_DSN: postgres://identity_user:identity_pass@postgres:5432/identity_db?sslmode=disable
+      IDENTITY_KEYS_DIR: /keys
+      IDENTITY_ACCESS_TOKEN_TTL: 15m
+      IDENTITY_REFRESH_TOKEN_TTL: 720h
+      IDENTITY_JWT_ISSUER: bank-core-identity
+    ports:
+      - "8081:8081"
+    volumes:
+      - identity-keys:/keys
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  account:
+    <<: *service-defaults
+    build:
+      context: ../..
+      dockerfile: deploy/compose/Dockerfile
+      args: { SERVICE: account }
+    environment:
+      LOG_LEVEL: info
+      ACCOUNT_GRPC_ADDR: :9092
+      ACCOUNT_HTTP_ADDR: :8082
+      ACCOUNT_DB_DSN: postgres://account_user:account_pass@postgres:5432/account_db?sslmode=disable
+      ACCOUNT_LEDGER_ADDR: ledger:9093
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  ledger:
+    <<: *service-defaults
+    build:
+      context: ../..
+      dockerfile: deploy/compose/Dockerfile
+      args: { SERVICE: ledger }
+    environment:
+      LOG_LEVEL: info
+      LEDGER_GRPC_ADDR: :9093
+      LEDGER_HTTP_ADDR: :8083
+      LEDGER_DB_DSN: postgres://ledger_user:ledger_pass@postgres:5432/ledger_db?sslmode=disable
+      LEDGER_KAFKA_BROKERS: redpanda:9092
+      LEDGER_HOLD_DEFAULT_TTL: 10m
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+
+  transfer:
+    <<: *service-defaults
+    build:
+      context: ../..
+      dockerfile: deploy/compose/Dockerfile
+      args: { SERVICE: transfer }
+    environment:
+      LOG_LEVEL: info
+      TRANSFER_GRPC_ADDR: :9094
+      TRANSFER_HTTP_ADDR: :8084
+      TRANSFER_DB_DSN: postgres://transfer_user:transfer_pass@postgres:5432/transfer_db?sslmode=disable
+      TRANSFER_KAFKA_BROKERS: redpanda:9092
+      TRANSFER_LEDGER_ADDR: toxiproxy:26093
+      TRANSFER_ACCOUNT_ADDR: account:9092
+      TRANSFER_RECOVERY_INTERVAL: 5s
+      TRANSFER_RECOVERY_STALE_AFTER: 15s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+
+  gateway:
+    <<: *service-defaults
+    build:
+      context: ../..
+      dockerfile: deploy/compose/Dockerfile
+      args: { SERVICE: gateway }
+    environment:
+      LOG_LEVEL: info
+      GATEWAY_HTTP_ADDR: :8080
+      GATEWAY_REDIS_ADDR: redis:6379
+      GATEWAY_JWKS_URL: http://identity:8081/.well-known/jwks.json
+      GATEWAY_IDENTITY_ADDR: identity:9091
+      GATEWAY_ACCOUNT_ADDR: account:9092
+      GATEWAY_TRANSFER_ADDR: transfer:9094
+      GATEWAY_RATE_LIMIT_READS_RPS: 10
+      GATEWAY_RATE_LIMIT_TRANSFERS_RPS: 2
+    ports:
+      - "8080:8080"
+    depends_on:
+      - identity
+      - account
+      - transfer
+      - redis
+
+  antifraud:
+    <<: *service-defaults
+    build:
+      context: ../..
+      dockerfile: deploy/compose/Dockerfile
+      args: { SERVICE: antifraud }
+    environment:
+      LOG_LEVEL: info
+      ANTIFRAUD_HTTP_ADDR: :8085
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+
+  notification:
+    <<: *service-defaults
+    build:
+      context: ../..
+      dockerfile: deploy/compose/Dockerfile
+      args: { SERVICE: notification }
+    environment:
+      LOG_LEVEL: info
+      NOTIFICATION_HTTP_ADDR: :8086
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+
+volumes:
+  postgres-data:
+  redpanda-data:
+  identity-keys:

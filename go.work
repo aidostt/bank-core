@@ -1,0 +1,13 @@
+go 1.26
+
+use (
+	./gen/go
+	./pkg
+	./services/account
+	./services/antifraud
+	./services/gateway
+	./services/identity
+	./services/ledger
+	./services/notification
+	./services/transfer
+)
