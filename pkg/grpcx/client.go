@@ -58,7 +58,7 @@ func Dial(target string, cfg ClientConfig, log *slog.Logger) (*grpc.ClientConn, 
 				slog.String("to", to.String()))
 		},
 	})
-	return grpc.NewClient(target,
+	conn, err := grpc.NewClient(target,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithChainUnaryInterceptor(
 			retryInterceptor(cfg, log),
@@ -67,6 +67,14 @@ func Dial(target string, cfg ClientConfig, log *slog.Logger) (*grpc.ClientConn, 
 			propagationInterceptor(),
 		),
 	)
+	if err != nil {
+		return nil, err
+	}
+	// Leave idle state immediately: the channel is established during
+	// service startup instead of inside the first request, which would
+	// otherwise eat into tight route deadlines (reads 1s).
+	conn.Connect()
+	return conn, nil
 }
 
 // Ambiguous reports whether the outcome of a call is unknown — the request

@@ -53,10 +53,17 @@ func loggingInterceptor(log *slog.Logger) grpc.UnaryServerInterceptor {
 		if code == codes.Internal || code == codes.Unknown {
 			lvl = slog.LevelError
 		}
-		log.LogAttrs(ctx, lvl, "grpc request",
+		attrs := []slog.Attr{
 			slog.String("method", info.FullMethod),
 			slog.String("code", code.String()),
-			slog.Duration("duration", time.Since(start)))
+			slog.Duration("duration", time.Since(start)),
+		}
+		if err != nil {
+			// Full error server-side, keyed by request.id (ADR-0018); the
+			// client only ever sees the sanitized status.
+			attrs = append(attrs, slog.String("error", err.Error()))
+		}
+		log.LogAttrs(ctx, lvl, "grpc request", attrs...)
 		return resp, err
 	}
 }

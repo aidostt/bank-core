@@ -89,6 +89,7 @@ echo "$P2P" | $JQ '{id, state, amount}'
 P2P_ID=$(echo "$P2P" | $JQ -r .id)
 
 step "Idempotency replay: same P2P request + same Idempotency-Key → same transfer, no double spend"
+sleep 1.2 # respect the 2 rps transfer rate limit (fixed 1s window, Retry-After: 1)
 REPLAY=$(api POST /v1/transfers "$ALICE" "{\"type\":\"P2P\",\"from_account_id\":\"$A_KZT_ID\",\"to_account_number\":\"$B_KZT_NUM\",\"minor_units\":1500000,\"currency\":\"KZT\"}" "Idempotency-Key: p2p-$RUN_ID")
 REPLAY_ID=$(echo "$REPLAY" | $JQ -r .id)
 if [ "$REPLAY_ID" = "$P2P_ID" ]; then

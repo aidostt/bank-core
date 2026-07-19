@@ -44,7 +44,10 @@ func Dial(identityAddr, accountAddr, transferAddr string, log *slog.Logger) (*Cl
 		bind    func(conn *grpc.ClientConn)
 	}{
 		{identityAddr, "gateway→identity", 0, func(conn *grpc.ClientConn) { c.Identity = identityv1.NewIdentityServiceClient(conn) }},
-		{accountAddr, "gateway→account", 0, func(conn *grpc.ClientConn) { c.Account = accountv1.NewAccountServiceClient(conn) }},
+		// OpenAccount fans out to the ledger synchronously; a cold first call
+		// can exceed the 2s default. The per-route deadline still caps the
+		// total budget (reads 1s / writes 3s / transfers 5s).
+		{accountAddr, "gateway→account", 5 * time.Second, func(conn *grpc.ClientConn) { c.Account = accountv1.NewAccountServiceClient(conn) }},
 		// CreateTransfer runs the whole saga synchronously in the happy path
 		// — give it the transfer-route budget (5s), not the 2s default.
 		{transferAddr, "gateway→transfer", 5 * time.Second, func(conn *grpc.ClientConn) { c.Transfer = transferv1.NewTransferServiceClient(conn) }},
