@@ -40,3 +40,23 @@ sql:
         out: services/account/internal/adapters/postgres/db
         sql_package: pgx/v5
         emit_pointers_for_null_types: true
+  - engine: postgresql
+    schema: services/ledger/migrations
+    queries: services/ledger/internal/adapters/postgres/queries.sql
+    gen:
+      go:
+        <<: *overrides
+        package: db
+        out: services/ledger/internal/adapters/postgres/db
+        sql_package: pgx/v5
+        emit_pointers_for_null_types: true
+  - engine: postgresql
+    schema: services/transfer/migrations
+    queries: services/transfer/internal/adapters/postgres/queries.sql
+    gen:
+      go:
+        <<: *overrides
+        package: db
+        out: services/transfer/internal/adapters/postgres/db
+        sql_package: pgx/v5
+        emit_pointers_for_null_types: true

@@ -83,6 +83,20 @@ assert total money conserved, no deadlocks, no negative available balances.
 sent_at NULL)` with index on `sent_at IS NULL`.
 Startup task ensures partitions for current and next month exist.
 
+Implementation notes:
+- The invariant-6 unique index cannot live on the partitioned tables (a
+  partitioned unique index must include the partition key), so idempotency is
+  enforced by the plain `journal_entry_refs(reference_type, reference_id →
+  entry_id, occurred_at)` table written in the same transaction.
+- `cash_in` is per-currency (`cash_in_kzt`, `cash_in_usd`): every ledger
+  account carries exactly one currency, and a top-up leg must match the
+  funded account's currency.
+- The zero-sum constraint trigger is attached per postings partition (plain
+  tables); the partition task creates it for every new monthly partition.
+- Lock order (ADR-0007) is: hold row first (if capturing), then balances in
+  ascending account id — uniform across PostTransaction/ReleaseHold/sweeper,
+  which makes lock cycles impossible by construction.
+
 ## Events produced
 
 Topic `ledger.transactions`, key = each affected `account_id` (one event per
