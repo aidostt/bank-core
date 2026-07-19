@@ -1,0 +1,6 @@
+DROP TABLE IF EXISTS outbox;
+DROP TABLE IF EXISTS limits;
+DROP TABLE IF EXISTS rates;
+DROP TABLE IF EXISTS idempotency_keys;
+DROP TABLE IF EXISTS transfer_events;
+DROP TABLE IF EXISTS transfers;

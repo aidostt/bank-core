@@ -71,11 +71,21 @@ circuit breaker (gobreaker: open after 5 consecutive failures, half-open probe 1
 Breaker open → fail fast `FAILED_PRECONDITION_UPSTREAM` → gateway 503.
 
 ## Recovery worker
-Every 5s: `SELECT ... FROM transfers WHERE state IN ('HELD','POSTING') AND
-updated_at < now() - interval '15 seconds' FOR UPDATE SKIP LOCKED LIMIT 10` —
+Every 5s: `SELECT ... FROM transfers WHERE state IN ('HELD','POSTING','RELEASING')
+AND updated_at < now() - interval '15 seconds' FOR UPDATE SKIP LOCKED LIMIT 10` —
 re-drive each through the state machine (safe on multiple instances thanks to
 SKIP LOCKED). Retry budget per transfer (5 attempts) then RELEASING → FAILED with
-`reason=recovery_exhausted`. Metric `transfer_recoveries_total{outcome}`.
+`reason=recovery_exhausted`. Metric `transfer_recoveries_total{outcome}` (M2).
+
+Implementation notes:
+- RELEASING is scanned in addition to HELD/POSTING so a crash during
+  compensation cannot strand a transfer (strictly safer than the original
+  two-state list; ReleaseHold is idempotent).
+- HELD and POSTING are persisted *before* the corresponding ledger call
+  (intent-first): PlaceHold/PostTransaction are idempotent by transfer id, so
+  a crash between the write and the call is always recoverable by re-driving.
+- Before any re-post the worker probes `GetTransactionByReference`; an
+  existing entry means the money already moved → COMPLETED, never re-sent.
 
 ## Events produced
 `transfers.status`, key = transfer_id: `TransferCompleted{transfer, applied_rate?}`,
