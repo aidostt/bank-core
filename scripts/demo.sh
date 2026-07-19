@@ -18,9 +18,10 @@ wait_ready() {
   step "Waiting for gateway at $BASE"
   for _ in $(seq 1 60); do
     if curl -fsS "$BASE/healthz" >/dev/null 2>&1; then
-      # readiness of the whole path: login must reach identity
-      if curl -fsS -o /dev/null -w '%{http_code}' -X POST "$BASE/v1/auth/login" \
-           -H 'Content-Type: application/json' -d '{"email":"x@x.x","password":"xxxxxxxx"}' | grep -qE '401|200'; then
+      # readiness of the whole path: login must reach identity (401 = alive)
+      code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/v1/auth/login" \
+               -H 'Content-Type: application/json' -d '{"email":"x@x.x","password":"xxxxxxxx"}' || true)
+      if [ "$code" = "401" ] || [ "$code" = "200" ]; then
         echo "gateway ready"; return 0
       fi
     fi
@@ -32,7 +33,7 @@ wait_ready() {
 api() { # api METHOD PATH TOKEN [BODY] [EXTRA_HEADER...]
   local method=$1 path=$2 token=$3 body=${4:-}
   shift; shift; shift; [ $# -gt 0 ] && shift
-  local args=(-fsS -X "$method" "$BASE$path" -H 'Content-Type: application/json')
+  local args=(-sS --fail-with-body -X "$method" "$BASE$path" -H 'Content-Type: application/json')
   [ -n "$token" ] && args+=(-H "Authorization: Bearer $token")
   [ -n "$body" ] && args+=(-d "$body")
   for h in "$@"; do args+=(-H "$h"); done
