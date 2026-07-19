@@ -59,7 +59,7 @@ func mod97(digits string) int {
 }
 
 func twoDigits(n int) string {
-	return string([]byte{byte('0' + n/10), byte('0' + n%10)})
+	return string([]byte{byte('0' + n/10), byte('0' + n%10)}) // #nosec G115 -- n ∈ [2,98] by mod-97 construction
 }
 
 // CanTransition encodes ACTIVE ⇄ FROZEN → CLOSED.

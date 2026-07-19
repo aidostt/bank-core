@@ -13,9 +13,9 @@ import (
 	"strings"
 	"time"
 
-	ledgerv1 "github.com/aidostt/bank-core/gen/go/bank/ledger/v1"
 	commonv1 "github.com/aidostt/bank-core/gen/go/bank/common/v1"
 	eventsv1 "github.com/aidostt/bank-core/gen/go/bank/events/v1"
+	ledgerv1 "github.com/aidostt/bank-core/gen/go/bank/ledger/v1"
 	"github.com/aidostt/bank-core/pkg/apperr"
 	"github.com/aidostt/bank-core/pkg/logging"
 	"github.com/aidostt/bank-core/pkg/money"

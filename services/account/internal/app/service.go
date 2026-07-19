@@ -275,7 +275,7 @@ func randomDigits(n int) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		out[i] = byte('0' + d.Int64())
+		out[i] = byte('0' + d.Int64()) // #nosec G115 -- d ∈ [0,9] by rand.Int bound
 	}
 	return string(out), nil
 }

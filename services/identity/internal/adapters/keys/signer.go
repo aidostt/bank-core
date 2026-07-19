@@ -70,8 +70,8 @@ func Load(dir, issuer string) (*Signer, error) {
 			"use": "sig",
 			"alg": "RS256",
 			"kid": kid,
-			"n":   base64.RawURLEncoding.EncodeToString(key.PublicKey.N.Bytes()),
-			"e":   base64.RawURLEncoding.EncodeToString(big.NewInt(int64(key.PublicKey.E)).Bytes()),
+			"n":   base64.RawURLEncoding.EncodeToString(key.N.Bytes()),
+			"e":   base64.RawURLEncoding.EncodeToString(big.NewInt(int64(key.E)).Bytes()),
 		}},
 	})
 	if err != nil {

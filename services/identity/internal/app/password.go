@@ -53,6 +53,9 @@ func verifyPassword(password, phc string) (bool, error) {
 	if err != nil {
 		return false, errBadHashFormat
 	}
-	got := argon2.IDKey([]byte(password), salt, iters, mem, par, uint32(len(want)))
+	if len(want) == 0 || len(want) > 1024 {
+		return false, errBadHashFormat
+	}
+	got := argon2.IDKey([]byte(password), salt, iters, mem, par, uint32(len(want))) // #nosec G115 -- bounded above
 	return subtle.ConstantTimeCompare(got, want) == 1, nil
 }

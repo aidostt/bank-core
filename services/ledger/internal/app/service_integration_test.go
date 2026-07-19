@@ -127,7 +127,7 @@ func TestPartitionRoutingAndZeroSumTrigger(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 	now := time.Now().UTC()
 	entryID := uuid.NewString()
 	var acctID string

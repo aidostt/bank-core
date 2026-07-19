@@ -11,16 +11,16 @@ func TestNextExhaustive(t *testing.T) {
 		e Event
 	}
 	legal := map[key]State{
-		{StateCreated, EvStart}:                StateValidating,
-		{StateValidating, EvValidated}:         StateHeld,
-		{StateValidating, EvValidationFailed}:  StateFailed,
-		{StateHeld, EvPostingStarted}:          StatePosting,
-		{StateHeld, EvHoldFailed}:              StateReleasing,
-		{StateHeld, EvRecoveryExhausted}:       StateReleasing,
-		{StatePosting, EvPosted}:               StateCompleted,
-		{StatePosting, EvPostFailed}:           StateReleasing,
-		{StatePosting, EvRecoveryExhausted}:    StateReleasing,
-		{StateReleasing, EvReleased}:           StateFailed,
+		{StateCreated, EvStart}:               StateValidating,
+		{StateValidating, EvValidated}:        StateHeld,
+		{StateValidating, EvValidationFailed}: StateFailed,
+		{StateHeld, EvPostingStarted}:         StatePosting,
+		{StateHeld, EvHoldFailed}:             StateReleasing,
+		{StateHeld, EvRecoveryExhausted}:      StateReleasing,
+		{StatePosting, EvPosted}:              StateCompleted,
+		{StatePosting, EvPostFailed}:          StateReleasing,
+		{StatePosting, EvRecoveryExhausted}:   StateReleasing,
+		{StateReleasing, EvReleased}:          StateFailed,
 	}
 
 	checked := 0
