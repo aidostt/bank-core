@@ -14,16 +14,16 @@ import (
 )
 
 var retryableReads = map[string]bool{
-	"/bank.identity.v1.IdentityService/GetMe":                 true,
-	"/bank.identity.v1.IdentityService/ListSessions":          true,
-	"/bank.account.v1.AccountService/GetAccount":              true,
-	"/bank.account.v1.AccountService/ListAccountsByCustomer":  true,
-	"/bank.account.v1.AccountService/ResolveByNumber":         true,
-	"/bank.account.v1.AccountService/GetBalances":             true,
-	"/bank.account.v1.AccountService/ListTransactions":        true,
-	"/bank.transfer.v1.TransferService/GetTransfer":           true,
-	"/bank.transfer.v1.TransferService/ListTransfers":         true,
-	"/bank.transfer.v1.TransferService/GetRates":              true,
+	"/bank.identity.v1.IdentityService/GetMe":                true,
+	"/bank.identity.v1.IdentityService/ListSessions":         true,
+	"/bank.account.v1.AccountService/GetAccount":             true,
+	"/bank.account.v1.AccountService/ListAccountsByCustomer": true,
+	"/bank.account.v1.AccountService/ResolveByNumber":        true,
+	"/bank.account.v1.AccountService/GetBalances":            true,
+	"/bank.account.v1.AccountService/ListTransactions":       true,
+	"/bank.transfer.v1.TransferService/GetTransfer":          true,
+	"/bank.transfer.v1.TransferService/ListTransfers":        true,
+	"/bank.transfer.v1.TransferService/GetRates":             true,
 }
 
 type Clients struct {

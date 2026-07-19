@@ -18,12 +18,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/alicebob/miniredis/v2"
 	accountv1 "github.com/aidostt/bank-core/gen/go/bank/account/v1"
 	identityv1 "github.com/aidostt/bank-core/gen/go/bank/identity/v1"
 	transferv1 "github.com/aidostt/bank-core/gen/go/bank/transfer/v1"
 	"github.com/aidostt/bank-core/pkg/apperr"
 	"github.com/aidostt/bank-core/pkg/logging"
+	"github.com/alicebob/miniredis/v2"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"google.golang.org/grpc"
@@ -37,7 +37,9 @@ import (
 
 // --- fake backends: minimal happy responses ---
 
-type fakeIdentity struct{ identityv1.UnimplementedIdentityServiceServer }
+type fakeIdentity struct {
+	identityv1.UnimplementedIdentityServiceServer
+}
 
 func (fakeIdentity) Register(context.Context, *identityv1.RegisterRequest) (*identityv1.RegisterResponse, error) {
 	return &identityv1.RegisterResponse{User: &identityv1.User{Id: "u1"}}, nil
@@ -55,7 +57,9 @@ func (fakeIdentity) GetMe(context.Context, *identityv1.GetMeRequest) (*identityv
 	return &identityv1.GetMeResponse{User: &identityv1.User{Id: "u1"}}, nil
 }
 
-type fakeAccount struct{ accountv1.UnimplementedAccountServiceServer }
+type fakeAccount struct {
+	accountv1.UnimplementedAccountServiceServer
+}
 
 func (fakeAccount) OpenAccount(context.Context, *accountv1.OpenAccountRequest) (*accountv1.OpenAccountResponse, error) {
 	return &accountv1.OpenAccountResponse{Account: &accountv1.Account{Id: "a1"}}, nil
@@ -73,7 +77,9 @@ func (fakeAccount) Unfreeze(context.Context, *accountv1.UnfreezeRequest) (*accou
 	return &accountv1.UnfreezeResponse{Account: &accountv1.Account{Id: "a1", Status: "ACTIVE"}}, nil
 }
 
-type fakeTransfer struct{ transferv1.UnimplementedTransferServiceServer }
+type fakeTransfer struct {
+	transferv1.UnimplementedTransferServiceServer
+}
 
 func (fakeTransfer) CreateTransfer(context.Context, *transferv1.CreateTransferRequest) (*transferv1.CreateTransferResponse, error) {
 	return &transferv1.CreateTransferResponse{Transfer: &transferv1.TransferView{
@@ -112,7 +118,7 @@ func newGateway(t *testing.T) *gwFixture {
 	jwksSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{"keys": []map[string]string{{
 			"kty": "RSA", "use": "sig", "alg": "RS256", "kid": kid,
-			"n": base64.RawURLEncoding.EncodeToString(key.PublicKey.N.Bytes()),
+			"n": base64.RawURLEncoding.EncodeToString(key.N.Bytes()),
 			"e": base64.RawURLEncoding.EncodeToString(big.NewInt(int64(key.PublicKey.E)).Bytes()),
 		}}})
 	}))
@@ -286,7 +292,7 @@ func TestJWTExpiryAndTampering(t *testing.T) {
 		"iss": "test-issuer", "sub": "cust-1", "exp": time.Now().Add(time.Hour).Unix(),
 	})
 	hs.Header["kid"] = f.kid
-	raw, _ := hs.SignedString(f.key.PublicKey.N.Bytes())
+	raw, _ := hs.SignedString(f.key.N.Bytes())
 	if w := f.request("GET", "/v1/customers/me", raw, nil); w.Code != http.StatusUnauthorized {
 		t.Fatalf("alg-confusion token: %d", w.Code)
 	}

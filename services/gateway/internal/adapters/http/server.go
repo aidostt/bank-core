@@ -86,9 +86,9 @@ func (s *Server) handlerTable() map[string]gin.HandlerFunc {
 
 		"GET /v1/customers/me": s.handleGetMe,
 
-		"POST /v1/accounts":                  s.handleOpenAccount,
-		"GET /v1/accounts":                   s.handleListAccounts,
-		"GET /v1/accounts/:id/transactions":  s.handleListTransactions,
+		"POST /v1/accounts":                 s.handleOpenAccount,
+		"GET /v1/accounts":                  s.handleListAccounts,
+		"GET /v1/accounts/:id/transactions": s.handleListTransactions,
 
 		"POST /v1/topups":       s.handleTopup,
 		"POST /v1/transfers":    s.handleCreateTransfer,
@@ -96,9 +96,9 @@ func (s *Server) handlerTable() map[string]gin.HandlerFunc {
 		"GET /v1/transfers":     s.handleListTransfers,
 		"GET /v1/rates":         s.handleGetRates,
 
-		"GET /v1/admin/customers/:id/accounts":  s.handleAdminListAccounts,
-		"POST /v1/admin/accounts/:id/freeze":    s.handleFreeze,
-		"POST /v1/admin/accounts/:id/unfreeze":  s.handleUnfreeze,
+		"GET /v1/admin/customers/:id/accounts": s.handleAdminListAccounts,
+		"POST /v1/admin/accounts/:id/freeze":   s.handleFreeze,
+		"POST /v1/admin/accounts/:id/unfreeze": s.handleUnfreeze,
 	}
 }
 

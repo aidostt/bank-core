@@ -5,15 +5,15 @@ import (
 )
 
 type Config struct {
-	HTTPAddr         string
-	RedisAddr        string
-	JWKSURL          string
-	JWTIssuer        string
-	IdentityAddr     string
-	AccountAddr      string
-	TransferAddr     string
-	RateLimitReads   int
-	RateLimitWrites  int
+	HTTPAddr        string
+	RedisAddr       string
+	JWKSURL         string
+	JWTIssuer       string
+	IdentityAddr    string
+	AccountAddr     string
+	TransferAddr    string
+	RateLimitReads  int
+	RateLimitWrites int
 }
 
 func Load() (Config, error) {
