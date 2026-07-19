@@ -1,0 +1,251 @@
+openapi: 3.0.3
+info:
+  title: bank-core public API
+  description: |
+    Retail online-banking edge API. Money is always integer minor units
+    (tiyn/cents) — no floats. Errors are RFC 9457 problem+json with a stable
+    machine `code`. POST /v1/transfers and /v1/topups require the
+    Idempotency-Key header (ADR-0012); a repeated key returns the same
+    transfer, a reused key with a different body yields 422
+    IDEMPOTENCY_CONFLICT. CreateTransfer may return 202 when a downstream
+    timeout leaves the saga in flight — poll GET /v1/transfers/{id}.
+  version: 1.0.0
+servers:
+  - url: http://localhost:8080
+security:
+  - bearerAuth: []
+paths:
+  /v1/auth/register:
+    post:
+      security: []
+      summary: Register a customer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, name]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, minLength: 8 }
+                name: { type: string }
+                phone: { type: string }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/User" } } } }
+        "409": { $ref: "#/components/responses/Problem" }
+  /v1/auth/login:
+    post:
+      security: []
+      summary: Login with email + password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string }
+                password: { type: string }
+      responses:
+        "200":
+          description: Token pair
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token: { type: string }
+                  refresh_token: { type: string }
+                  expires_in: { type: integer }
+                  user: { $ref: "#/components/schemas/User" }
+        "401": { $ref: "#/components/responses/Problem" }
+  /v1/auth/refresh:
+    post:
+      security: []
+      summary: Rotate the refresh token (reuse revokes the session family)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token: { type: string }
+      responses:
+        "200": { description: New token pair }
+        "401": { $ref: "#/components/responses/Problem" }
+  /v1/auth/logout:
+    post:
+      security: []
+      summary: Revoke the session family
+      responses:
+        "204": { description: Logged out }
+  /v1/customers/me:
+    get:
+      summary: Current user profile
+      responses:
+        "200": { description: Profile, content: { application/json: { schema: { $ref: "#/components/schemas/User" } } } }
+  /v1/accounts:
+    post:
+      summary: Open an account (KZT or USD)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [currency]
+              properties:
+                currency: { type: string, enum: [KZT, USD] }
+      responses:
+        "201": { description: Account created }
+    get:
+      summary: Own accounts with balances (as_of exposed honestly)
+      responses:
+        "200": { description: Accounts with balances }
+  /v1/accounts/{id}/transactions:
+    get:
+      summary: Account statement (cursor pagination, time-range scoped)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: from, in: query, schema: { type: string, format: date-time } }
+        - { name: to, in: query, schema: { type: string, format: date-time } }
+        - { name: page_size, in: query, schema: { type: integer, maximum: 200 } }
+        - { name: cursor, in: query, schema: { type: string } }
+      responses:
+        "200": { description: Postings page }
+  /v1/topups:
+    post:
+      summary: Mock funding (double-entry from the cash_in account)
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [account_id, minor_units, currency]
+              properties:
+                account_id: { type: string }
+                minor_units: { type: integer, format: int64, minimum: 1 }
+                currency: { type: string, enum: [KZT, USD] }
+      responses:
+        "201": { description: Terminal transfer (COMPLETED or FAILED with reason) }
+        "202": { description: In flight — poll /v1/transfers/{id} }
+        "400": { $ref: "#/components/responses/Problem" }
+  /v1/transfers:
+    post:
+      summary: Create INTERNAL (own-to-own, FX allowed) or P2P transfer
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type, from_account_id, minor_units, currency]
+              properties:
+                type: { type: string, enum: [INTERNAL, P2P] }
+                from_account_id: { type: string }
+                to_account_id: { type: string, description: INTERNAL destination }
+                to_account_number: { type: string, description: P2P destination }
+                minor_units: { type: integer, format: int64, minimum: 1 }
+                currency: { type: string, enum: [KZT, USD], description: source-account currency }
+      responses:
+        "201": { description: Terminal transfer, content: { application/json: { schema: { $ref: "#/components/schemas/Transfer" } } } }
+        "202": { description: In flight — poll /v1/transfers/{id} }
+        "422": { $ref: "#/components/responses/Problem" }
+    get:
+      summary: Transfer history (cursor pagination)
+      responses:
+        "200": { description: Transfers page }
+  /v1/transfers/{id}:
+    get:
+      summary: Poll saga state
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Transfer, content: { application/json: { schema: { $ref: "#/components/schemas/Transfer" } } } }
+  /v1/rates:
+    get:
+      summary: Current FX rates (decimal strings, micro precision)
+      responses:
+        "200": { description: Rates }
+  /v1/admin/customers/{id}/accounts:
+    get:
+      summary: Accounts of a customer (support/admin)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string }, description: user id }
+      responses:
+        "200": { description: Accounts }
+  /v1/admin/accounts/{id}/freeze:
+    post:
+      summary: Freeze an account (support/admin)
+      responses:
+        "200": { description: Frozen }
+  /v1/admin/accounts/{id}/unfreeze:
+    post:
+      summary: Unfreeze an account (support/admin)
+      responses:
+        "200": { description: Active }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema: { type: string }
+      description: Mandatory business idempotency key (ADR-0012)
+  responses:
+    Problem:
+      description: RFC 9457 problem+json with stable machine code
+      content:
+        application/problem+json:
+          schema:
+            type: object
+            properties:
+              type: { type: string }
+              title: { type: string }
+              status: { type: integer }
+              code: { type: string, description: stable machine code, e.g. INSUFFICIENT_FUNDS }
+              detail: { type: string }
+              request_id: { type: string }
+  schemas:
+    Money:
+      type: object
+      properties:
+        minor_units: { type: integer, format: int64 }
+        currency: { type: string, enum: [KZT, USD] }
+    User:
+      type: object
+      properties:
+        id: { type: string }
+        email: { type: string }
+        name: { type: string }
+        phone: { type: string }
+        roles: { type: array, items: { type: string } }
+        created_at: { type: string, format: date-time }
+    Transfer:
+      type: object
+      properties:
+        id: { type: string }
+        type: { type: string, enum: [TOPUP, INTERNAL, P2P] }
+        state: { type: string, enum: [CREATED, VALIDATING, HELD, POSTING, COMPLETED, RELEASING, FAILED] }
+        from_account_id: { type: string }
+        to_account_id: { type: string }
+        amount: { $ref: "#/components/schemas/Money" }
+        counter_amount: { $ref: "#/components/schemas/Money" }
+        applied_rate: { type: string }
+        reason: { type: string }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
