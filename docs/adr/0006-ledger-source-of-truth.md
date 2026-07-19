@@ -29,3 +29,8 @@ materialized-balance journal gives the same guarantees with simpler ops.
 `sum(postings) == 0` and `balance == sum(postings for account)` become testable
 invariants (property-style tests). Top-ups are journal entries against the cash-in
 account, so even mock funding is honest double-entry.
+
+M1 interim (per prompts/M1.md — projections are M2): account-service serves
+read-API balances via a synchronous ledger `GetBalances` call. The M2
+projection consumer replaces that path; the "projections, never authoritative"
+rule applies from M2 on. Flagged in docs/services/account-service.md.
