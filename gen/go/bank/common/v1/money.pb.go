@@ -22,7 +22,7 @@ const (
 )
 
 // Money in integer minor units (tiyn/cents). Floats for money are forbidden
-// everywhere (CLAUDE.md). Currency is ISO 4217: KZT or USD only.
+// everywhere (project conventions). Currency is ISO 4217: KZT or USD only.
 type Money struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	MinorUnits    int64                  `protobuf:"varint,1,opt,name=minor_units,json=minorUnits,proto3" json:"minor_units,omitempty"`

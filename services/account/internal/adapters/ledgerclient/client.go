@@ -1,5 +1,5 @@
 // Package ledgerclient adapts the ledger gRPC API to the app-side port.
-// Client policy per CLAUDE.md §3: 2s timeout, 3 retries with jitter (all
+// Client policy per project conventions §3: 2s timeout, 3 retries with jitter (all
 // used methods are idempotent), circuit breaker.
 package ledgerclient
 

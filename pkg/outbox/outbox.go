@@ -50,7 +50,7 @@ func NewProtoMessage(topic, key, requestID string, payload proto.Message) (Messa
 
 // Insert writes the message into the outbox table inside the caller's
 // transaction. Direct produce from request handlers is forbidden
-// (CLAUDE.md §5) — this is the only publish path.
+// (project conventions §5) — this is the only publish path.
 func Insert(ctx context.Context, tx pgx.Tx, m Message) error {
 	_, err := tx.Exec(ctx,
 		`INSERT INTO outbox (id, topic, key, payload) VALUES ($1, $2, $3, $4)`,

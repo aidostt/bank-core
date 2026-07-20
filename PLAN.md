@@ -1,4 +1,4 @@
-# bank-core — Build Plan (2-day Claude Code sprint)
+# bank-core — Build Plan (2-day sprint)
 
 Quality gate for every milestone: `make lint` clean, `make test` green, docs updated,
 no TODOs on the money path. If time runs out, a finished M1+M2 beats a rushed M3 —

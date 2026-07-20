@@ -17,3 +17,7 @@ Thumbs.db
 
 # local volumes / scratch
 *.local
+
+# local tooling config
+.claude/
+CLAUDE.md

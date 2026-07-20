@@ -1,5 +1,5 @@
 // Package config implements env-only configuration with fail-fast semantics
-// (CLAUDE.md §8): every missing required variable is reported at startup.
+// (project conventions §8): every missing required variable is reported at startup.
 package config
 
 import (

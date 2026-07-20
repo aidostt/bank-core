@@ -1,5 +1,5 @@
 // Package grpcclients dials the three backends with the standard client
-// policy (CLAUDE.md §3); only naturally idempotent reads are retried.
+// policy (project conventions §3); only naturally idempotent reads are retried.
 package grpcclients
 
 import (

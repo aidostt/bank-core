@@ -14,7 +14,7 @@ import (
 )
 
 // ServerOptions returns the standard interceptor chain for every gRPC server
-// (CLAUDE.md §3): recovery → logging → auth-claims. The otel link in the
+// (project conventions §3): recovery → logging → auth-claims. The otel link in the
 // chain lands in M2 together with pkg/otel.
 func ServerOptions(log *slog.Logger) []grpc.ServerOption {
 	return []grpc.ServerOption{

@@ -11,7 +11,7 @@ import (
 	"github.com/golang-migrate/migrate/v4/source/iofs"
 )
 
-// Migrate applies embedded migrations at service start (CLAUDE.md tech
+// Migrate applies embedded migrations at service start (project conventions tech
 // stack). fsys must contain the migration files under dir.
 func Migrate(dsn string, fsys fs.FS, dir string) error {
 	src, err := iofs.New(fsys, dir)

@@ -1,5 +1,5 @@
 // identity-service entrypoint. Manual DI happens here and nowhere else
-// (CLAUDE.md §2).
+// (project conventions §2).
 package main
 
 import (

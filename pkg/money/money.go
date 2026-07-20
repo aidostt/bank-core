@@ -1,6 +1,6 @@
 // Package money implements integer minor-unit amounts (tiyn/cents) with
 // overflow-checked arithmetic and banker's rounding for FX conversion.
-// Floats for money are forbidden everywhere in bank-core (CLAUDE.md).
+// Floats for money are forbidden everywhere in bank-core (project conventions).
 package money
 
 import (

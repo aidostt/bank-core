@@ -16,7 +16,7 @@ import (
 )
 
 // ClientConfig is the standard resilience policy for every internal gRPC
-// client (CLAUDE.md §3): per-attempt timeout → retry (idempotent methods
+// client (project conventions §3): per-attempt timeout → retry (idempotent methods
 // only) → circuit breaker.
 type ClientConfig struct {
 	// Name identifies the breaker in logs, e.g. "transfer→ledger".

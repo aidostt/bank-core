@@ -1,5 +1,5 @@
 // Package migrations embeds the SQL migrations, applied on service start
-// (CLAUDE.md tech stack).
+// (project conventions tech stack).
 package migrations
 
 import "embed"
