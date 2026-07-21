@@ -11,11 +11,16 @@ import (
 	"math/big"
 	"time"
 
+	accountv1 "github.com/aidostt/bank-core/gen/go/bank/account/v1"
+	eventsv1 "github.com/aidostt/bank-core/gen/go/bank/events/v1"
 	"github.com/aidostt/bank-core/pkg/apperr"
 	"github.com/aidostt/bank-core/pkg/grpcx"
+	"github.com/aidostt/bank-core/pkg/logging"
 	"github.com/aidostt/bank-core/pkg/money"
+	"github.com/aidostt/bank-core/pkg/outbox"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/aidostt/bank-core/services/account/internal/adapters/postgres"
 	"github.com/aidostt/bank-core/services/account/internal/adapters/postgres/db"
@@ -99,21 +104,37 @@ func (s *Service) OpenAccount(ctx context.Context, caller grpcx.Claims, currency
 	if err := s.ledger.CreateAccount(ctx, id.String(), currency); err != nil {
 		return nil, err
 	}
-	acc, err := s.store.Queries().CreateAccount(ctx, db.CreateAccountParams{
-		ID:         id.String(),
-		CustomerID: customer.ID,
-		Number:     number,
-		Currency:   currency,
+	var view *AccountView
+	err = s.store.WithTx(ctx, func(ctx context.Context, q *db.Queries, tx pgx.Tx) error {
+		acc, err := q.CreateAccount(ctx, db.CreateAccountParams{
+			ID:         id.String(),
+			CustomerID: customer.ID,
+			Number:     number,
+			Currency:   currency,
+		})
+		if err != nil {
+			return err
+		}
+		view = &AccountView{
+			ID: acc.ID, CustomerID: acc.CustomerID, UserID: caller.CustomerID,
+			Number: acc.Number, Currency: acc.Currency, Status: acc.Status, OpenedAt: acc.OpenedAt,
+		}
+		// AccountOpened rides the outbox in the same tx (ADR-0009).
+		msg, err := outbox.NewProtoMessage(ctx, "accounts.events", acc.ID,
+			logging.RequestID(ctx), &eventsv1.AccountOpened{Account: &accountv1.Account{
+				Id: acc.ID, CustomerId: acc.CustomerID, UserId: caller.CustomerID,
+				Number: acc.Number, Currency: acc.Currency, Status: acc.Status,
+				OpenedAt: timestamppb.New(acc.OpenedAt),
+			}})
+		if err != nil {
+			return err
+		}
+		return outbox.Insert(ctx, tx, msg)
 	})
 	if err != nil {
 		return nil, err
 	}
-	// M1 note: AccountOpened outbox event ships in M2 together with the
-	// account relay (PLAN M1 wires relays in ledger+transfer only).
-	return &AccountView{
-		ID: acc.ID, CustomerID: acc.CustomerID, UserID: caller.CustomerID,
-		Number: acc.Number, Currency: acc.Currency, Status: acc.Status, OpenedAt: acc.OpenedAt,
-	}, nil
+	return view, nil
 }
 
 func (s *Service) GetAccount(ctx context.Context, caller grpcx.Claims, accountID string) (*AccountView, error) {
@@ -155,8 +176,9 @@ type AccountWithBalance struct {
 }
 
 // ListAccounts returns the caller's accounts (or userID's for staff) with
-// balances. M1: balances come from a synchronous ledger GetBalances call;
-// M2 switches this to the local projection (docs note).
+// balances from the local projection (M2): eventually consistent, staleness
+// exposed honestly via as_of (ADR-0006). Holds are not projected — available
+// equals the settled balance (account doc note).
 func (s *Service) ListAccounts(ctx context.Context, caller grpcx.Claims, userID string) ([]AccountWithBalance, error) {
 	target := caller.CustomerID
 	if userID != "" && userID != caller.CustomerID {
@@ -178,9 +200,15 @@ func (s *Service) ListAccounts(ctx context.Context, caller grpcx.Claims, userID 
 	}
 	balances := map[string]BalanceView{}
 	if len(ids) > 0 {
-		balances, err = s.ledger.GetBalances(ctx, ids)
+		projected, err := s.store.Queries().GetBalancesForAccounts(ctx, ids)
 		if err != nil {
 			return nil, err
+		}
+		for _, b := range projected {
+			balances[b.AccountID] = BalanceView{
+				AccountID: b.AccountID, Balance: b.Balance,
+				Available: b.Balance, AsOf: b.AsOf,
+			}
 		}
 	}
 	out := make([]AccountWithBalance, 0, len(rows))
@@ -190,6 +218,10 @@ func (s *Service) ListAccounts(ctx context.Context, caller grpcx.Claims, userID 
 		}
 		if b, ok := balances[r.ID]; ok {
 			item.Balance = &b
+		} else {
+			// No postings consumed yet — a zero balance with a zero as_of is
+			// honest for a freshly opened account.
+			item.Balance = &BalanceView{AccountID: r.ID}
 		}
 		out = append(out, item)
 	}

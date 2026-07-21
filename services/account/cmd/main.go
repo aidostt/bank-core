@@ -14,11 +14,16 @@ import (
 
 	accountv1 "github.com/aidostt/bank-core/gen/go/bank/account/v1"
 	"github.com/aidostt/bank-core/pkg/grpcx"
+	kafkart "github.com/aidostt/bank-core/pkg/kafka"
 	"github.com/aidostt/bank-core/pkg/logging"
+	"github.com/aidostt/bank-core/pkg/metrics"
+	otelx "github.com/aidostt/bank-core/pkg/otel"
+	"github.com/aidostt/bank-core/pkg/outbox"
 	"github.com/aidostt/bank-core/pkg/pgtx"
 	"google.golang.org/grpc"
 
 	grpcadapter "github.com/aidostt/bank-core/services/account/internal/adapters/grpc"
+	kafkaadapter "github.com/aidostt/bank-core/services/account/internal/adapters/kafka"
 	"github.com/aidostt/bank-core/services/account/internal/adapters/ledgerclient"
 	"github.com/aidostt/bank-core/services/account/internal/adapters/postgres"
 	"github.com/aidostt/bank-core/services/account/internal/app"
@@ -42,6 +47,12 @@ func run(log *slog.Logger) error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	otelShutdown, err := otelx.Init(ctx, "account", cfg.OTLPEndpoint, log)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = otelShutdown(context.Background()) }()
+
 	if err := pgtx.Migrate(cfg.DBDSN, migrations.FS, "."); err != nil {
 		return err
 	}
@@ -59,6 +70,26 @@ func run(log *slog.Logger) error {
 
 	svc := app.NewService(postgres.NewStore(pool), ledger, log)
 
+	// Consumers: projection + freeze + customer bootstrap (M2).
+	consumer, err := kafkart.NewConsumer(kafkart.Config{
+		Brokers: cfg.KafkaBrokers,
+		Group:   kafkaadapter.Group,
+		Topics:  kafkaadapter.Topics(),
+	}, pool, kafkaadapter.NewHandlers(log).Handle, metrics.ObserveConsumerLag, log)
+	if err != nil {
+		return err
+	}
+	defer consumer.Close()
+	go consumer.Run(ctx)
+
+	// Outbox relay for accounts.events (AccountOpened/Frozen).
+	relay, err := outbox.NewRelay(pool, cfg.KafkaBrokers, log)
+	if err != nil {
+		return err
+	}
+	defer relay.Close()
+	go relay.Run(ctx)
+
 	grpcServer := grpc.NewServer(grpcx.ServerOptions(log)...)
 	accountv1.RegisterAccountServiceServer(grpcServer, grpcadapter.NewServer(svc))
 
@@ -68,6 +99,7 @@ func run(log *slog.Logger) error {
 	}
 
 	mux := http.NewServeMux()
+	mux.Handle("GET /metrics", metrics.Handler())
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
 	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
 		pingCtx, cancel := context.WithTimeout(r.Context(), 2*time.Second)

@@ -23,8 +23,10 @@ func NewStore(pool *pgxpool.Pool) *Store {
 
 func (s *Store) Queries() *db.Queries { return s.queries }
 
-func (s *Store) WithTx(ctx context.Context, fn func(ctx context.Context, q *db.Queries) error) error {
+// WithTx exposes both the sqlc queries and the raw tx (outbox.Insert needs
+// the latter — events commit atomically with the change, ADR-0009).
+func (s *Store) WithTx(ctx context.Context, fn func(ctx context.Context, q *db.Queries, tx pgx.Tx) error) error {
 	return s.tx.WithTx(ctx, func(ctx context.Context, tx pgx.Tx) error {
-		return fn(ctx, s.queries.WithTx(tx))
+		return fn(ctx, s.queries.WithTx(tx), tx)
 	})
 }

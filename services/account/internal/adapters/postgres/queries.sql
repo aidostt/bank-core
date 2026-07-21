@@ -33,3 +33,20 @@ ORDER BY a.opened_at;
 
 -- name: UpdateAccountStatus :one
 UPDATE accounts SET status = $2 WHERE id = $1 RETURNING *;
+
+-- name: UpsertBalanceGuarded :execrows
+-- Version-guarded projection upsert (ADR-0006): reordered events are
+-- ignored because only a strictly newer version may overwrite.
+INSERT INTO balances (account_id, balance, version, as_of)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (account_id) DO UPDATE
+SET balance = EXCLUDED.balance,
+    version = EXCLUDED.version,
+    as_of   = EXCLUDED.as_of
+WHERE balances.version < EXCLUDED.version;
+
+-- name: GetBalancesForAccounts :many
+SELECT * FROM balances WHERE account_id = ANY($1::uuid[]);
+
+-- name: GetAccountStatus :one
+SELECT status FROM accounts WHERE id = $1;

@@ -110,6 +110,46 @@ func (q *Queries) GetAccountByNumber(ctx context.Context, number string) (GetAcc
 	return i, err
 }
 
+const getAccountStatus = `-- name: GetAccountStatus :one
+SELECT status FROM accounts WHERE id = $1
+`
+
+func (q *Queries) GetAccountStatus(ctx context.Context, id string) (string, error) {
+	row := q.db.QueryRow(ctx, getAccountStatus, id)
+	var status string
+	err := row.Scan(&status)
+	return status, err
+}
+
+const getBalancesForAccounts = `-- name: GetBalancesForAccounts :many
+SELECT account_id, balance, version, as_of FROM balances WHERE account_id = ANY($1::uuid[])
+`
+
+func (q *Queries) GetBalancesForAccounts(ctx context.Context, dollar_1 []string) ([]Balance, error) {
+	rows, err := q.db.Query(ctx, getBalancesForAccounts, dollar_1)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Balance
+	for rows.Next() {
+		var i Balance
+		if err := rows.Scan(
+			&i.AccountID,
+			&i.Balance,
+			&i.Version,
+			&i.AsOf,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getCustomerByUserID = `-- name: GetCustomerByUserID :one
 SELECT id, user_id, tier, created_at FROM customers WHERE user_id = $1
 `
@@ -195,6 +235,38 @@ func (q *Queries) UpdateAccountStatus(ctx context.Context, arg UpdateAccountStat
 		&i.OpenedAt,
 	)
 	return i, err
+}
+
+const upsertBalanceGuarded = `-- name: UpsertBalanceGuarded :execrows
+INSERT INTO balances (account_id, balance, version, as_of)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (account_id) DO UPDATE
+SET balance = EXCLUDED.balance,
+    version = EXCLUDED.version,
+    as_of   = EXCLUDED.as_of
+WHERE balances.version < EXCLUDED.version
+`
+
+type UpsertBalanceGuardedParams struct {
+	AccountID string
+	Balance   int64
+	Version   int64
+	AsOf      time.Time
+}
+
+// Version-guarded projection upsert (ADR-0006): reordered events are
+// ignored because only a strictly newer version may overwrite.
+func (q *Queries) UpsertBalanceGuarded(ctx context.Context, arg UpsertBalanceGuardedParams) (int64, error) {
+	result, err := q.db.Exec(ctx, upsertBalanceGuarded,
+		arg.AccountID,
+		arg.Balance,
+		arg.Version,
+		arg.AsOf,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const upsertCustomer = `-- name: UpsertCustomer :one
