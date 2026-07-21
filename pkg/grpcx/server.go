@@ -7,19 +7,22 @@ import (
 	"time"
 
 	"github.com/aidostt/bank-core/pkg/logging"
+	"github.com/aidostt/bank-core/pkg/metrics"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
 
-// ServerOptions returns the standard interceptor chain for every gRPC server
-// (project conventions §3): recovery → logging → auth-claims. The otel link in the
-// chain lands in M2 together with pkg/otel.
+// ServerOptions returns the standard chain for every gRPC server (project
+// conventions §3): recovery → otel → metrics/logging → auth-claims.
 func ServerOptions(log *slog.Logger) []grpc.ServerOption {
 	return []grpc.ServerOption{
+		grpc.StatsHandler(otelgrpc.NewServerHandler()),
 		grpc.ChainUnaryInterceptor(
 			recoveryInterceptor(log),
+			metrics.GRPCServerInterceptor(),
 			loggingInterceptor(log),
 			claimsInterceptor(),
 		),

@@ -10,4 +10,5 @@ use (
 	./services/ledger
 	./services/notification
 	./services/transfer
+	./tests/e2e
 )

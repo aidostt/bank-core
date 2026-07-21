@@ -29,11 +29,14 @@ const (
 // Envelope for every Kafka event (architecture §5). event_id is UUIDv7 from
 // the producer and drives consumer dedup (ADR-0009).
 type EventEnvelope struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	EventId       string                 `protobuf:"bytes,1,opt,name=event_id,json=eventId,proto3" json:"event_id,omitempty"`
-	OccurredAt    *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=occurred_at,json=occurredAt,proto3" json:"occurred_at,omitempty"`
-	RequestId     string                 `protobuf:"bytes,3,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
-	Payload       *anypb.Any             `protobuf:"bytes,4,opt,name=payload,proto3" json:"payload,omitempty"`
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	EventId    string                 `protobuf:"bytes,1,opt,name=event_id,json=eventId,proto3" json:"event_id,omitempty"`
+	OccurredAt *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=occurred_at,json=occurredAt,proto3" json:"occurred_at,omitempty"`
+	RequestId  string                 `protobuf:"bytes,3,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
+	Payload    *anypb.Any             `protobuf:"bytes,4,opt,name=payload,proto3" json:"payload,omitempty"`
+	// W3C trace context (traceparent/tracestate) injected by the producer so
+	// one trace spans gateway → gRPC → outbox → consumer (ADR-0013).
+	TraceContext  map[string]string `protobuf:"bytes,5,rep,name=trace_context,json=traceContext,proto3" json:"trace_context,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -92,6 +95,13 @@ func (x *EventEnvelope) GetRequestId() string {
 func (x *EventEnvelope) GetPayload() *anypb.Any {
 	if x != nil {
 		return x.Payload
+	}
+	return nil
+}
+
+func (x *EventEnvelope) GetTraceContext() map[string]string {
+	if x != nil {
+		return x.TraceContext
 	}
 	return nil
 }
@@ -492,12 +502,15 @@ func (x *CustomerRegistered) GetName() string {
 
 // Topic fraud.alerts, key = customer_id (antifraud — M2).
 type FraudAlertRaised struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	CustomerId    string                 `protobuf:"bytes,1,opt,name=customer_id,json=customerId,proto3" json:"customer_id,omitempty"`
-	TransferId    string                 `protobuf:"bytes,2,opt,name=transfer_id,json=transferId,proto3" json:"transfer_id,omitempty"`
-	Rule          string                 `protobuf:"bytes,3,opt,name=rule,proto3" json:"rule,omitempty"`
-	Severity      string                 `protobuf:"bytes,4,opt,name=severity,proto3" json:"severity,omitempty"`
-	Details       string                 `protobuf:"bytes,5,opt,name=details,proto3" json:"details,omitempty"`
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	CustomerId string                 `protobuf:"bytes,1,opt,name=customer_id,json=customerId,proto3" json:"customer_id,omitempty"`
+	TransferId string                 `protobuf:"bytes,2,opt,name=transfer_id,json=transferId,proto3" json:"transfer_id,omitempty"`
+	Rule       string                 `protobuf:"bytes,3,opt,name=rule,proto3" json:"rule,omitempty"`
+	Severity   string                 `protobuf:"bytes,4,opt,name=severity,proto3" json:"severity,omitempty"`
+	Details    string                 `protobuf:"bytes,5,opt,name=details,proto3" json:"details,omitempty"`
+	// Source account of the offending transfer — the freeze target for the
+	// account-service consumer on HIGH severity.
+	AccountId     string `protobuf:"bytes,6,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -567,18 +580,29 @@ func (x *FraudAlertRaised) GetDetails() string {
 	return ""
 }
 
+func (x *FraudAlertRaised) GetAccountId() string {
+	if x != nil {
+		return x.AccountId
+	}
+	return ""
+}
+
 var File_bank_events_v1_events_proto protoreflect.FileDescriptor
 
 const file_bank_events_v1_events_proto_rawDesc = "" +
 	"\n" +
-	"\x1bbank/events/v1/events.proto\x12\x0ebank.events.v1\x1a\x1dbank/account/v1/account.proto\x1a\x1bbank/ledger/v1/ledger.proto\x1a\x1fbank/transfer/v1/transfer.proto\x1a\x19google/protobuf/any.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xb6\x01\n" +
+	"\x1bbank/events/v1/events.proto\x12\x0ebank.events.v1\x1a\x1dbank/account/v1/account.proto\x1a\x1bbank/ledger/v1/ledger.proto\x1a\x1fbank/transfer/v1/transfer.proto\x1a\x19google/protobuf/any.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xcd\x02\n" +
 	"\rEventEnvelope\x12\x19\n" +
 	"\bevent_id\x18\x01 \x01(\tR\aeventId\x12;\n" +
 	"\voccurred_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"occurredAt\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x03 \x01(\tR\trequestId\x12.\n" +
-	"\apayload\x18\x04 \x01(\v2\x14.google.protobuf.AnyR\apayload\"\xf1\x01\n" +
+	"\apayload\x18\x04 \x01(\v2\x14.google.protobuf.AnyR\apayload\x12T\n" +
+	"\rtrace_context\x18\x05 \x03(\v2/.bank.events.v1.EventEnvelope.TraceContextEntryR\ftraceContext\x1a?\n" +
+	"\x11TraceContextEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xf1\x01\n" +
 	"\x11TransactionPosted\x122\n" +
 	"\x05entry\x18\x01 \x01(\v2\x1c.bank.ledger.v1.JournalEntryR\x05entry\x12\x1d\n" +
 	"\n" +
@@ -605,7 +629,7 @@ const file_bank_events_v1_events_proto_rawDesc = "" +
 	"\x12CustomerRegistered\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x14\n" +
 	"\x05email\x18\x02 \x01(\tR\x05email\x12\x12\n" +
-	"\x04name\x18\x03 \x01(\tR\x04name\"\x9e\x01\n" +
+	"\x04name\x18\x03 \x01(\tR\x04name\"\xbd\x01\n" +
 	"\x10FraudAlertRaised\x12\x1f\n" +
 	"\vcustomer_id\x18\x01 \x01(\tR\n" +
 	"customerId\x12\x1f\n" +
@@ -613,7 +637,9 @@ const file_bank_events_v1_events_proto_rawDesc = "" +
 	"transferId\x12\x12\n" +
 	"\x04rule\x18\x03 \x01(\tR\x04rule\x12\x1a\n" +
 	"\bseverity\x18\x04 \x01(\tR\bseverity\x12\x18\n" +
-	"\adetails\x18\x05 \x01(\tR\adetailsB\xb8\x01\n" +
+	"\adetails\x18\x05 \x01(\tR\adetails\x12\x1d\n" +
+	"\n" +
+	"account_id\x18\x06 \x01(\tR\taccountIdB\xb8\x01\n" +
 	"\x12com.bank.events.v1B\vEventsProtoP\x01Z;github.com/aidostt/bank-core/gen/go/bank/events/v1;eventsv1\xa2\x02\x03BEX\xaa\x02\x0eBank.Events.V1\xca\x02\x0eBank\\Events\\V1\xe2\x02\x1aBank\\Events\\V1\\GPBMetadata\xea\x02\x10Bank::Events::V1b\x06proto3"
 
 var (
@@ -628,7 +654,7 @@ func file_bank_events_v1_events_proto_rawDescGZIP() []byte {
 	return file_bank_events_v1_events_proto_rawDescData
 }
 
-var file_bank_events_v1_events_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
+var file_bank_events_v1_events_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
 var file_bank_events_v1_events_proto_goTypes = []any{
 	(*EventEnvelope)(nil),         // 0: bank.events.v1.EventEnvelope
 	(*TransactionPosted)(nil),     // 1: bank.events.v1.TransactionPosted
@@ -639,24 +665,26 @@ var file_bank_events_v1_events_proto_goTypes = []any{
 	(*AccountUnfrozen)(nil),       // 6: bank.events.v1.AccountUnfrozen
 	(*CustomerRegistered)(nil),    // 7: bank.events.v1.CustomerRegistered
 	(*FraudAlertRaised)(nil),      // 8: bank.events.v1.FraudAlertRaised
-	(*timestamppb.Timestamp)(nil), // 9: google.protobuf.Timestamp
-	(*anypb.Any)(nil),             // 10: google.protobuf.Any
-	(*v1.JournalEntry)(nil),       // 11: bank.ledger.v1.JournalEntry
-	(*v11.TransferView)(nil),      // 12: bank.transfer.v1.TransferView
-	(*v12.Account)(nil),           // 13: bank.account.v1.Account
+	nil,                           // 9: bank.events.v1.EventEnvelope.TraceContextEntry
+	(*timestamppb.Timestamp)(nil), // 10: google.protobuf.Timestamp
+	(*anypb.Any)(nil),             // 11: google.protobuf.Any
+	(*v1.JournalEntry)(nil),       // 12: bank.ledger.v1.JournalEntry
+	(*v11.TransferView)(nil),      // 13: bank.transfer.v1.TransferView
+	(*v12.Account)(nil),           // 14: bank.account.v1.Account
 }
 var file_bank_events_v1_events_proto_depIdxs = []int32{
-	9,  // 0: bank.events.v1.EventEnvelope.occurred_at:type_name -> google.protobuf.Timestamp
-	10, // 1: bank.events.v1.EventEnvelope.payload:type_name -> google.protobuf.Any
-	11, // 2: bank.events.v1.TransactionPosted.entry:type_name -> bank.ledger.v1.JournalEntry
-	12, // 3: bank.events.v1.TransferCompleted.transfer:type_name -> bank.transfer.v1.TransferView
-	12, // 4: bank.events.v1.TransferFailed.transfer:type_name -> bank.transfer.v1.TransferView
-	13, // 5: bank.events.v1.AccountOpened.account:type_name -> bank.account.v1.Account
-	6,  // [6:6] is the sub-list for method output_type
-	6,  // [6:6] is the sub-list for method input_type
-	6,  // [6:6] is the sub-list for extension type_name
-	6,  // [6:6] is the sub-list for extension extendee
-	0,  // [0:6] is the sub-list for field type_name
+	10, // 0: bank.events.v1.EventEnvelope.occurred_at:type_name -> google.protobuf.Timestamp
+	11, // 1: bank.events.v1.EventEnvelope.payload:type_name -> google.protobuf.Any
+	9,  // 2: bank.events.v1.EventEnvelope.trace_context:type_name -> bank.events.v1.EventEnvelope.TraceContextEntry
+	12, // 3: bank.events.v1.TransactionPosted.entry:type_name -> bank.ledger.v1.JournalEntry
+	13, // 4: bank.events.v1.TransferCompleted.transfer:type_name -> bank.transfer.v1.TransferView
+	13, // 5: bank.events.v1.TransferFailed.transfer:type_name -> bank.transfer.v1.TransferView
+	14, // 6: bank.events.v1.AccountOpened.account:type_name -> bank.account.v1.Account
+	7,  // [7:7] is the sub-list for method output_type
+	7,  // [7:7] is the sub-list for method input_type
+	7,  // [7:7] is the sub-list for extension type_name
+	7,  // [7:7] is the sub-list for extension extendee
+	0,  // [0:7] is the sub-list for field type_name
 }
 
 func init() { file_bank_events_v1_events_proto_init() }
@@ -670,7 +698,7 @@ func file_bank_events_v1_events_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_bank_events_v1_events_proto_rawDesc), len(file_bank_events_v1_events_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   9,
+			NumMessages:   10,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

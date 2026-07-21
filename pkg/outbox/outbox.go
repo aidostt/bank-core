@@ -9,6 +9,7 @@ import (
 	"time"
 
 	eventsv1 "github.com/aidostt/bank-core/gen/go/bank/events/v1"
+	otelx "github.com/aidostt/bank-core/pkg/otel"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"google.golang.org/protobuf/proto"
@@ -25,8 +26,10 @@ type Message struct {
 }
 
 // NewProtoMessage wraps payload in the standard envelope (event_id UUIDv7,
-// occurred_at, request_id — architecture §5) and marshals it.
-func NewProtoMessage(topic, key, requestID string, payload proto.Message) (Message, error) {
+// occurred_at, request_id — architecture §5) and marshals it. The current
+// trace context is captured from ctx so consumers continue the same trace
+// (ADR-0013).
+func NewProtoMessage(ctx context.Context, topic, key, requestID string, payload proto.Message) (Message, error) {
 	id, err := uuid.NewV7()
 	if err != nil {
 		return Message{}, fmt.Errorf("uuidv7: %w", err)
@@ -36,10 +39,11 @@ func NewProtoMessage(topic, key, requestID string, payload proto.Message) (Messa
 		return Message{}, fmt.Errorf("any: %w", err)
 	}
 	env := &eventsv1.EventEnvelope{
-		EventId:    id.String(),
-		OccurredAt: timestamppb.New(time.Now().UTC()),
-		RequestId:  requestID,
-		Payload:    anyPayload,
+		EventId:      id.String(),
+		OccurredAt:   timestamppb.New(time.Now().UTC()),
+		RequestId:    requestID,
+		Payload:      anyPayload,
+		TraceContext: otelx.InjectMap(ctx),
 	}
 	raw, err := proto.Marshal(env)
 	if err != nil {

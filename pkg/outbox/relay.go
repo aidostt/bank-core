@@ -6,13 +6,15 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/aidostt/bank-core/pkg/metrics"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/twmb/franz-go/pkg/kgo"
 )
 
 const (
-	relayBatch = 100
-	relayTick  = 200 * time.Millisecond
+	relayBatch   = 100
+	relayTick    = 200 * time.Millisecond
+	lagEveryTick = 25 // outbox_lag gauge refresh ≈ every 5s
 )
 
 // Relay polls the outbox table and publishes pending rows in insertion
@@ -44,6 +46,7 @@ func (r *Relay) Close() { r.client.Close() }
 func (r *Relay) Run(ctx context.Context) {
 	ticker := time.NewTicker(relayTick)
 	defer ticker.Stop()
+	tick := 0
 	for {
 		select {
 		case <-ctx.Done():
@@ -61,7 +64,18 @@ func (r *Relay) Run(ctx context.Context) {
 					break
 				}
 			}
+			if tick++; tick%lagEveryTick == 0 {
+				r.observeLag(ctx)
+			}
 		}
+	}
+}
+
+// observeLag refreshes the outbox_lag gauge (architecture §8).
+func (r *Relay) observeLag(ctx context.Context) {
+	var unsent int64
+	if err := r.pool.QueryRow(ctx, `SELECT count(*) FROM outbox WHERE sent_at IS NULL`).Scan(&unsent); err == nil {
+		metrics.OutboxLag.Set(float64(unsent))
 	}
 }
 

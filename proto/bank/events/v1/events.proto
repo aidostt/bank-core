@@ -15,6 +15,9 @@ message EventEnvelope {
   google.protobuf.Timestamp occurred_at = 2;
   string request_id = 3;
   google.protobuf.Any payload = 4;
+  // W3C trace context (traceparent/tracestate) injected by the producer so
+  // one trace spans gateway → gRPC → outbox → consumer (ADR-0013).
+  map<string, string> trace_context = 5;
 }
 
 // Topic ledger.transactions, key = affected account id: one event per
@@ -68,4 +71,7 @@ message FraudAlertRaised {
   string rule = 3;
   string severity = 4;
   string details = 5;
+  // Source account of the offending transfer — the freeze target for the
+  // account-service consumer on HIGH severity.
+  string account_id = 6;
 }
