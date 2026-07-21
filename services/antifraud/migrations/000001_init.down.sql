@@ -1,0 +1,6 @@
+DROP TABLE IF EXISTS outbox;
+DROP TABLE IF EXISTS processed_messages;
+DROP TABLE IF EXISTS rules;
+DROP TABLE IF EXISTS beneficiaries;
+DROP TABLE IF EXISTS alerts;
+DROP TABLE IF EXISTS customer_stats;
