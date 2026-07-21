@@ -13,6 +13,7 @@ type Config struct {
 	DBDSN          string
 	KafkaBrokers   []string
 	HoldDefaultTTL time.Duration
+	OTLPEndpoint   string
 }
 
 func Load() (Config, error) {
@@ -23,6 +24,7 @@ func Load() (Config, error) {
 		DBDSN:          l.String("LEDGER_DB_DSN"),
 		KafkaBrokers:   strings.Split(l.String("LEDGER_KAFKA_BROKERS"), ","),
 		HoldDefaultTTL: l.Duration("LEDGER_HOLD_DEFAULT_TTL", 10*time.Minute),
+		OTLPEndpoint:   l.StringDefault("LEDGER_OTLP_ENDPOINT", ""),
 	}
 	return cfg, l.Err()
 }

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/aidostt/bank-core/pkg/logging"
+	otelx "github.com/aidostt/bank-core/pkg/otel"
 
 	"github.com/aidostt/bank-core/services/gateway/internal/adapters/grpcclients"
 	httpadapter "github.com/aidostt/bank-core/services/gateway/internal/adapters/http"
@@ -35,6 +36,12 @@ func run(log *slog.Logger) error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+
+	otelShutdown, err := otelx.Init(ctx, "gateway", cfg.OTLPEndpoint, log)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = otelShutdown(context.Background()) }()
 
 	jwks := app.NewJWKSCache(cfg.JWKSURL, cfg.JWTIssuer)
 	if err := jwks.WarmUp(60 * time.Second); err != nil {

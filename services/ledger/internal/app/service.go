@@ -18,6 +18,7 @@ import (
 	ledgerv1 "github.com/aidostt/bank-core/gen/go/bank/ledger/v1"
 	"github.com/aidostt/bank-core/pkg/apperr"
 	"github.com/aidostt/bank-core/pkg/logging"
+	"github.com/aidostt/bank-core/pkg/metrics"
 	"github.com/aidostt/bank-core/pkg/money"
 	"github.com/aidostt/bank-core/pkg/outbox"
 	"github.com/google/uuid"
@@ -184,6 +185,7 @@ func (s *Service) PostTransaction(ctx context.Context, refType, refID, holdID st
 	if err != nil {
 		return nil, toAppErr(err)
 	}
+	metrics.LedgerPostingsTotal.Add(float64(len(view.Postings)))
 	return view, nil
 }
 
@@ -340,7 +342,7 @@ func (s *Service) postOnce(ctx context.Context, refType, refID, holdID string, s
 				BalanceAfter:      balances[id].Balance,
 				Version:           balances[id].Version,
 			}
-			msg, err := outbox.NewProtoMessage(TopicTransactions, key, requestID, event)
+			msg, err := outbox.NewProtoMessage(ctx, TopicTransactions, key, requestID, event)
 			if err != nil {
 				return err
 			}

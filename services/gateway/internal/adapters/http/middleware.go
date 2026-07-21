@@ -10,8 +10,13 @@ import (
 	"github.com/aidostt/bank-core/pkg/apperr"
 	"github.com/aidostt/bank-core/pkg/grpcx"
 	"github.com/aidostt/bank-core/pkg/logging"
+	"github.com/aidostt/bank-core/pkg/metrics"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/aidostt/bank-core/services/gateway/internal/app"
 )
@@ -31,6 +36,41 @@ func requestIDMiddleware() gin.HandlerFunc {
 		c.Header("X-Request-ID", id)
 		c.Request = c.Request.WithContext(logging.WithRequestID(c.Request.Context(), id))
 		c.Next()
+	}
+}
+
+// tracingMiddleware opens the root server span (ADR-0013) and continues an
+// incoming W3C context if a client supplied one.
+func tracingMiddleware() gin.HandlerFunc {
+	tracer := otel.Tracer("gateway")
+	return func(c *gin.Context) {
+		ctx := otel.GetTextMapPropagator().Extract(c.Request.Context(),
+			propagation.HeaderCarrier(c.Request.Header))
+		route := c.FullPath()
+		if route == "" {
+			route = "unmatched"
+		}
+		ctx, span := tracer.Start(ctx, c.Request.Method+" "+route,
+			trace.WithSpanKind(trace.SpanKindServer))
+		c.Request = c.Request.WithContext(ctx)
+		c.Next()
+		span.SetAttributes(
+			attribute.Int("http.status_code", c.Writer.Status()),
+			attribute.String("request.id", logging.RequestID(c.Request.Context())))
+		span.End()
+	}
+}
+
+// metricsMiddleware records RED metrics per route (architecture §8).
+func metricsMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		start := time.Now()
+		c.Next()
+		route := c.FullPath()
+		if route == "" {
+			route = "unmatched"
+		}
+		metrics.ObserveHTTP(c.Request.Method, route, c.Writer.Status(), time.Since(start))
 	}
 }
 

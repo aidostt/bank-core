@@ -18,6 +18,7 @@ import (
 	"github.com/aidostt/bank-core/pkg/apperr"
 	"github.com/aidostt/bank-core/pkg/grpcx"
 	"github.com/aidostt/bank-core/pkg/logging"
+	"github.com/aidostt/bank-core/pkg/metrics"
 	"github.com/aidostt/bank-core/pkg/money"
 	"github.com/aidostt/bank-core/pkg/outbox"
 	"github.com/google/uuid"
@@ -462,6 +463,9 @@ func (s *Service) transition(ctx context.Context, t *Transfer, event domain.Even
 		t.State = prev // keep the in-memory copy honest for the caller loop
 		return err
 	}
+	if domain.IsTerminal(next) {
+		metrics.TransfersTotal.WithLabelValues(string(next)).Inc()
+	}
 	return nil
 }
 
@@ -470,14 +474,14 @@ func (s *Service) insertStatusEvent(ctx context.Context, tx StoreTx, t *Transfer
 	var msg outbox.Message
 	var err error
 	if t.State == domain.StateCompleted {
-		msg, err = outbox.NewProtoMessage(TopicTransfersStatus, t.ID, logging.RequestID(ctx),
+		msg, err = outbox.NewProtoMessage(ctx, TopicTransfersStatus, t.ID, logging.RequestID(ctx),
 			&eventsv1.TransferCompleted{Transfer: view, AppliedRate: view.GetAppliedRate()})
 	} else {
 		reason := ""
 		if t.Reason != nil {
 			reason = *t.Reason
 		}
-		msg, err = outbox.NewProtoMessage(TopicTransfersStatus, t.ID, logging.RequestID(ctx),
+		msg, err = outbox.NewProtoMessage(ctx, TopicTransfersStatus, t.ID, logging.RequestID(ctx),
 			&eventsv1.TransferFailed{Transfer: view, Reason: reason})
 	}
 	if err != nil {

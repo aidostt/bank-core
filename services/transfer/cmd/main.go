@@ -15,6 +15,8 @@ import (
 	transferv1 "github.com/aidostt/bank-core/gen/go/bank/transfer/v1"
 	"github.com/aidostt/bank-core/pkg/grpcx"
 	"github.com/aidostt/bank-core/pkg/logging"
+	"github.com/aidostt/bank-core/pkg/metrics"
+	otelx "github.com/aidostt/bank-core/pkg/otel"
 	"github.com/aidostt/bank-core/pkg/outbox"
 	"github.com/aidostt/bank-core/pkg/pgtx"
 	"google.golang.org/grpc"
@@ -43,6 +45,12 @@ func run(log *slog.Logger) error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+
+	otelShutdown, err := otelx.Init(ctx, "transfer", cfg.OTLPEndpoint, log)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = otelShutdown(context.Background()) }()
 
 	if err := pgtx.Migrate(cfg.DBDSN, migrations.FS, "."); err != nil {
 		return err
@@ -101,6 +109,7 @@ func run(log *slog.Logger) error {
 	}
 
 	mux := http.NewServeMux()
+	mux.Handle("GET /metrics", metrics.Handler())
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
 	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
 		pingCtx, cancel := context.WithTimeout(r.Context(), 2*time.Second)

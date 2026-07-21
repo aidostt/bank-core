@@ -16,6 +16,7 @@ type Config struct {
 	AccountAddr        string
 	RecoveryInterval   time.Duration
 	RecoveryStaleAfter time.Duration
+	OTLPEndpoint       string
 }
 
 func Load() (Config, error) {
@@ -29,6 +30,7 @@ func Load() (Config, error) {
 		AccountAddr:        l.String("TRANSFER_ACCOUNT_ADDR"),
 		RecoveryInterval:   l.Duration("TRANSFER_RECOVERY_INTERVAL", 5*time.Second),
 		RecoveryStaleAfter: l.Duration("TRANSFER_RECOVERY_STALE_AFTER", 15*time.Second),
+		OTLPEndpoint:       l.StringDefault("TRANSFER_OTLP_ENDPOINT", ""),
 	}
 	return cfg, l.Err()
 }

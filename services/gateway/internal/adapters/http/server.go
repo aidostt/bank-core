@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/aidostt/bank-core/pkg/metrics"
 	"github.com/gin-gonic/gin"
 
 	"github.com/aidostt/bank-core/services/gateway/api"
@@ -45,6 +46,8 @@ func (s *Server) Router() *gin.Engine {
 	r.Use(
 		requestIDMiddleware(),
 		ginRecovery(s.log),
+		tracingMiddleware(),
+		metricsMiddleware(),
 		loggingMiddleware(s.log),
 		securityHeaders(),
 		cors(),
@@ -53,6 +56,7 @@ func (s *Server) Router() *gin.Engine {
 
 	r.GET("/healthz", func(c *gin.Context) { c.Status(http.StatusOK) })
 	r.GET("/readyz", func(c *gin.Context) { c.Status(http.StatusOK) })
+	r.GET("/metrics", gin.WrapH(metrics.Handler()))
 	r.GET("/v1/openapi.yaml", func(c *gin.Context) {
 		c.Data(http.StatusOK, "application/yaml", api.OpenAPISpec)
 	})

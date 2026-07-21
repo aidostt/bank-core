@@ -14,6 +14,7 @@ type Config struct {
 	TransferAddr    string
 	RateLimitReads  int
 	RateLimitWrites int
+	OTLPEndpoint    string
 }
 
 func Load() (Config, error) {
@@ -28,6 +29,7 @@ func Load() (Config, error) {
 		TransferAddr:    l.String("GATEWAY_TRANSFER_ADDR"),
 		RateLimitReads:  l.Int("GATEWAY_RATE_LIMIT_READS_RPS", 10),
 		RateLimitWrites: l.Int("GATEWAY_RATE_LIMIT_TRANSFERS_RPS", 2),
+		OTLPEndpoint:    l.StringDefault("GATEWAY_OTLP_ENDPOINT", ""),
 	}
 	return cfg, l.Err()
 }
