@@ -1,6 +1,5 @@
-// notification-service — M1 stub: health endpoints only, so the compose
-// core profile builds and runs all 7 services. The retry/DLQ consumer and
-// templates land in M2 (prompts/M2.md, docs/services/notification-service.md).
+// notification-service entrypoint (M2): the terminal consumer — renders
+// mock notifications off transfers.status and fraud.alerts.
 package main
 
 import (
@@ -13,34 +12,85 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/aidostt/bank-core/pkg/config"
+	kafkart "github.com/aidostt/bank-core/pkg/kafka"
 	"github.com/aidostt/bank-core/pkg/logging"
+	"github.com/aidostt/bank-core/pkg/metrics"
+	otelx "github.com/aidostt/bank-core/pkg/otel"
+	"github.com/aidostt/bank-core/pkg/pgtx"
+
+	"github.com/aidostt/bank-core/services/notification/internal/app"
+	"github.com/aidostt/bank-core/services/notification/internal/config"
+	"github.com/aidostt/bank-core/services/notification/migrations"
 )
 
 func main() {
 	log := logging.New("notification")
-	l := config.New()
-	addr := l.StringDefault("NOTIFICATION_HTTP_ADDR", ":8086")
-	if err := l.Err(); err != nil {
+	if err := run(log); err != nil {
 		log.Error("fatal", slog.String("error", err.Error()))
 		os.Exit(1)
+	}
+}
+
+func run(log *slog.Logger) error {
+	cfg, err := config.Load()
+	if err != nil {
+		return err
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	otelShutdown, err := otelx.Init(ctx, "notification", cfg.OTLPEndpoint, log)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = otelShutdown(context.Background()) }()
+
+	if err := pgtx.Migrate(cfg.DBDSN, migrations.FS, "."); err != nil {
+		return err
+	}
+	pool, err := pgtx.Connect(ctx, cfg.DBDSN, log)
+	if err != nil {
+		return err
+	}
+	defer pool.Close()
+
+	notifier := app.NewNotifier(app.LogSender{Log: log}, log)
+	consumer, err := kafkart.NewConsumer(kafkart.Config{
+		Brokers: cfg.KafkaBrokers,
+		Group:   app.Group,
+		Topics:  []string{app.TopicTransfersStatus, app.TopicFraudAlerts},
+	}, pool, notifier.Handle, metrics.ObserveConsumerLag, log)
+	if err != nil {
+		return err
+	}
+	defer consumer.Close()
+	go consumer.Run(ctx)
+
 	mux := http.NewServeMux()
+	mux.Handle("GET /metrics", metrics.Handler())
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
-	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
-	server := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
+	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
+		pingCtx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+		if err := pool.Ping(pingCtx); err != nil {
+			http.Error(w, "db not ready", http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	})
+	server := &http.Server{Addr: cfg.HTTPAddr, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
 
 	go func() {
-		log.Info("http listening (M2 will add the notification consumer)", slog.String("addr", addr))
+		log.Info("http listening", slog.String("addr", cfg.HTTPAddr))
 		if err := server.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 			log.Error("http server", slog.String("error", err.Error()))
 		}
 	}()
+
 	<-ctx.Done()
+	log.Info("shutting down")
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	_ = server.Shutdown(shutdownCtx)
+	return nil
 }
