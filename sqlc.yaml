@@ -19,6 +19,14 @@ overrides:
           import: "time"
           type: "Time"
           pointer: true
+      - db_type: "date"
+        go_type:
+          import: "time"
+          type: "Time"
+      - db_type: "pg_catalog.date"
+        go_type:
+          import: "time"
+          type: "Time"
 sql:
   - engine: postgresql
     schema: services/identity/migrations
@@ -58,5 +66,15 @@ sql:
         <<: *overrides
         package: db
         out: services/transfer/internal/adapters/postgres/db
+        sql_package: pgx/v5
+        emit_pointers_for_null_types: true
+  - engine: postgresql
+    schema: services/antifraud/migrations
+    queries: services/antifraud/internal/adapters/postgres/queries.sql
+    gen:
+      go:
+        <<: *overrides
+        package: db
+        out: services/antifraud/internal/adapters/postgres/db
         sql_package: pgx/v5
         emit_pointers_for_null_types: true
