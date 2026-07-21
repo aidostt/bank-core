@@ -1,0 +1,145 @@
+{{- /*
+Demo-grade infra inside the chart: single-replica postgres (init-db from a
+ConfigMap), redpanda dev-container, redis. Ephemeral storage by design —
+docs/deploy.md records why this deviates from "subcharts or pinned deps".
+*/ -}}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init
+  labels:
+    {{- include "bank-core.labels" . | nindent 4 }}
+data:
+  init-db.sql: |
+{{ .Files.Get "files/init-db.sql" | indent 4 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  labels:
+    {{- include "bank-core.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app.kubernetes.io/name: postgres }
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: postgres
+        {{- include "bank-core.labels" . | nindent 8 }}
+    spec:
+      containers:
+        - name: postgres
+          image: {{ .Values.infra.postgres.image }}
+          env:
+            - name: POSTGRES_PASSWORD
+              value: postgres
+          ports: [{ containerPort: 5432 }]
+          volumeMounts:
+            - name: init
+              mountPath: /docker-entrypoint-initdb.d
+          readinessProbe:
+            exec: { command: ["pg_isready", "-U", "postgres"] }
+            periodSeconds: 3
+      volumes:
+        - name: init
+          configMap: { name: postgres-init }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+spec:
+  selector: { app.kubernetes.io/name: postgres }
+  ports: [{ port: 5432 }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redpanda
+  labels:
+    {{- include "bank-core.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app.kubernetes.io/name: redpanda }
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: redpanda
+        {{- include "bank-core.labels" . | nindent 8 }}
+    spec:
+      containers:
+        - name: redpanda
+          image: {{ .Values.infra.redpanda.image }}
+          args:
+            - redpanda
+            - start
+            - --mode=dev-container
+            - --smp=1
+            - --memory=512M
+            - --kafka-addr=internal://0.0.0.0:9092
+            - --advertise-kafka-addr=internal://redpanda:9092
+            - --set
+            - redpanda.auto_create_topics_enabled=true
+          ports: [{ containerPort: 9092 }]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redpanda
+spec:
+  selector: { app.kubernetes.io/name: redpanda }
+  ports: [{ port: 9092 }]
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: redpanda-init-{{ .Release.Revision }}
+  labels:
+    {{- include "bank-core.labels" . | nindent 4 }}
+spec:
+  backoffLimit: 10
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: init
+          image: {{ .Values.infra.redpanda.image }}
+          command: ["/bin/sh", "-c"]
+          args:
+            - >
+              rpk topic create
+              ledger.transactions transfers.status accounts.events fraud.alerts customers.registered
+              --partitions 6 --replicas 1 -X brokers=redpanda:9092 || true
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  labels:
+    {{- include "bank-core.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app.kubernetes.io/name: redis }
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: redis
+        {{- include "bank-core.labels" . | nindent 8 }}
+    spec:
+      containers:
+        - name: redis
+          image: {{ .Values.infra.redis.image }}
+          ports: [{ containerPort: 6379 }]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+spec:
+  selector: { app.kubernetes.io/name: redis }
+  ports: [{ port: 6379 }]
