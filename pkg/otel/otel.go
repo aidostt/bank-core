@@ -48,11 +48,9 @@ func Init(ctx context.Context, service, endpoint string, log *slog.Logger) (func
 	if err != nil {
 		return nil, err
 	}
-	res, err := resource.Merge(resource.Default(), resource.NewWithAttributes(
-		semconv.SchemaURL, semconv.ServiceName(service)))
-	if err != nil {
-		return nil, err
-	}
+	// Schemaless: merging with resource.Default() trips "conflicting Schema
+	// URL" whenever the SDK and the imported semconv drift apart.
+	res := resource.NewSchemaless(semconv.ServiceName(service))
 	provider := sdktrace.NewTracerProvider(
 		sdktrace.WithBatcher(exporter),
 		sdktrace.WithResource(res),
