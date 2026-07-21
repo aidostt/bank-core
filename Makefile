@@ -47,14 +47,15 @@ generate:
 tidy:
 	@set -e; for m in $(MODULES); do echo "--- go mod tidy $$m"; (cd $$m && go mod tidy); done
 
-load: ## k6 load scripts ship in M3
-	@echo "load scripts ship in M3 (see prompts/M3.md)"; exit 1
+load: ## requires a running stack (make up) and k6
+	k6 run load/k6/transfers.js
+	k6 run load/k6/reads.js
 
-chaos: ## toxiproxy chaos demo ships in M3
-	@echo "chaos demo ships in M3 (see prompts/M3.md)"; exit 1
+chaos: ## requires a running stack (make up)
+	bash scripts/chaos.sh
 
-helm-deploy: ## helm + k3d ships in M3
-	@echo "helm deploy ships in M3 (see prompts/M3.md)"; exit 1
+helm-deploy: ## requires k3d, kubectl, helm
+	bash scripts/helm-deploy.sh
 
 dlq-inspect:
 	bash scripts/dlq-inspect.sh
