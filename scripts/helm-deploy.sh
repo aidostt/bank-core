@@ -13,11 +13,15 @@ step() { printf '\n\033[1;36m☸ %s\033[0m\n' "$*"; }
 step "building service images (compose builder, shared cache)"
 docker compose -f "$(dirname "$0")/../deploy/compose/docker-compose.yml" --profile core build
 
-step "creating k3d cluster '$CLUSTER' (idempotent)"
-if ! k3d cluster list | grep -q "^$CLUSTER"; then
-  k3d cluster create "$CLUSTER" --agents 1 -p "30080:30080@server:0" --wait
+step "creating k3d cluster '$CLUSTER' (idempotent, self-healing)"
+# Reuse only a *reachable* cluster; a half-created one left behind by a
+# crashed Docker daemon must be recreated, not imported into.
+if k3d cluster list | grep -q "^$CLUSTER" && kubectl --context "k3d-$CLUSTER" cluster-info >/dev/null 2>&1; then
+  echo "cluster exists and is reachable — reusing"
 else
-  echo "cluster exists — reusing"
+  echo "creating a fresh cluster"
+  k3d cluster delete "$CLUSTER" >/dev/null 2>&1 || true
+  k3d cluster create "$CLUSTER" --agents 1 -p "30080:30080@server:0" --wait
 fi
 
 step "importing images into the cluster"
