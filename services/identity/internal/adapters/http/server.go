@@ -6,11 +6,13 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/aidostt/bank-core/pkg/metrics"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func NewServer(addr string, jwks []byte, pool *pgxpool.Pool) *http.Server {
 	mux := http.NewServeMux()
+	mux.Handle("GET /metrics", metrics.Handler())
 	mux.HandleFunc("GET /.well-known/jwks.json", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "public, max-age=300")

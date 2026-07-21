@@ -12,7 +12,10 @@ import (
 	"strings"
 	"time"
 
+	eventsv1 "github.com/aidostt/bank-core/gen/go/bank/events/v1"
 	"github.com/aidostt/bank-core/pkg/apperr"
+	"github.com/aidostt/bank-core/pkg/logging"
+	"github.com/aidostt/bank-core/pkg/outbox"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
@@ -64,7 +67,7 @@ func (s *Service) Register(ctx context.Context, email, password, name, phone str
 		return nil, apperr.Wrap(apperr.CodeInternal, "hash password", err)
 	}
 	var view *UserView
-	err = s.store.WithTx(ctx, func(ctx context.Context, q *db.Queries) error {
+	err = s.store.WithTx(ctx, func(ctx context.Context, q *db.Queries, tx pgx.Tx) error {
 		u, err := q.CreateUser(ctx, db.CreateUserParams{Email: email, PasswordHash: hash, Name: name, Phone: phone})
 		if err != nil {
 			if postgres.IsUniqueViolation(err) {
@@ -75,8 +78,18 @@ func (s *Service) Register(ctx context.Context, email, password, name, phone str
 		if err := q.AddRole(ctx, db.AddRoleParams{UserID: u.ID, Role: domain.RoleCustomer}); err != nil {
 			return err
 		}
-		// M1 note: the customers.registered outbox event ships in M2
-		// (docs/services/identity-service.md).
+		// customers.registered rides the outbox in the same tx (ADR-0009);
+		// account-service bootstraps the customer row from it (M2).
+		msg, err := outbox.NewProtoMessage(ctx, "customers.registered", u.ID,
+			logging.RequestID(ctx), &eventsv1.CustomerRegistered{
+				UserId: u.ID, Email: u.Email, Name: u.Name,
+			})
+		if err != nil {
+			return err
+		}
+		if err := outbox.Insert(ctx, tx, msg); err != nil {
+			return err
+		}
 		view = &UserView{ID: u.ID, Email: u.Email, Name: u.Name, Phone: u.Phone,
 			Roles: []string{domain.RoleCustomer}, CreatedAt: u.CreatedAt}
 		return nil
@@ -165,7 +178,7 @@ func (s *Service) Refresh(ctx context.Context, rawToken, ip, userAgent string) (
 		return nil, err
 	}
 	var access string
-	err = s.store.WithTx(ctx, func(ctx context.Context, q *db.Queries) error {
+	err = s.store.WithTx(ctx, func(ctx context.Context, q *db.Queries, _ pgx.Tx) error {
 		next, err := q.CreateSession(ctx, db.CreateSessionParams{
 			UserID:      sess.UserID,
 			FamilyID:    sess.FamilyID,

@@ -16,6 +16,8 @@ import (
 	identityv1 "github.com/aidostt/bank-core/gen/go/bank/identity/v1"
 	"github.com/aidostt/bank-core/pkg/grpcx"
 	"github.com/aidostt/bank-core/pkg/logging"
+	otelx "github.com/aidostt/bank-core/pkg/otel"
+	"github.com/aidostt/bank-core/pkg/outbox"
 	"github.com/aidostt/bank-core/pkg/pgtx"
 	"google.golang.org/grpc"
 
@@ -44,6 +46,12 @@ func run(log *slog.Logger) error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	otelShutdown, err := otelx.Init(ctx, "identity", cfg.OTLPEndpoint, log)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = otelShutdown(context.Background()) }()
+
 	if err := pgtx.Migrate(cfg.DBDSN, migrations.FS, "."); err != nil {
 		return err
 	}
@@ -59,6 +67,14 @@ func run(log *slog.Logger) error {
 	}
 	store := postgres.NewStore(pool)
 	svc := app.NewService(store, signer, cfg.AccessTokenTTL, cfg.RefreshTokenTTL, log)
+
+	// Outbox relay for customers.registered (M2).
+	relay, err := outbox.NewRelay(pool, cfg.KafkaBrokers, log)
+	if err != nil {
+		return err
+	}
+	defer relay.Close()
+	go relay.Run(ctx)
 
 	grpcServer := grpc.NewServer(grpcx.ServerOptions(log)...)
 	identityv1.RegisterIdentityServiceServer(grpcServer, grpcadapter.NewServer(svc))

@@ -26,10 +26,11 @@ func NewStore(pool *pgxpool.Pool) *Store {
 // Queries returns pool-backed (auto-commit) queries for single reads.
 func (s *Store) Queries() *db.Queries { return s.queries }
 
-// WithTx runs fn with transaction-scoped queries.
-func (s *Store) WithTx(ctx context.Context, fn func(ctx context.Context, q *db.Queries) error) error {
+// WithTx runs fn with transaction-scoped queries plus the raw tx for
+// outbox inserts (ADR-0009).
+func (s *Store) WithTx(ctx context.Context, fn func(ctx context.Context, q *db.Queries, tx pgx.Tx) error) error {
 	return s.tx.WithTx(ctx, func(ctx context.Context, tx pgx.Tx) error {
-		return fn(ctx, s.queries.WithTx(tx))
+		return fn(ctx, s.queries.WithTx(tx), tx)
 	})
 }
 
