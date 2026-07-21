@@ -7,16 +7,18 @@ MODULES := pkg gen/go services/gateway services/identity services/account servic
 IT_MODULES := services/identity services/account services/ledger services/transfer
 
 .PHONY: up up-observability down demo test test-integration e2e lint generate \
-        verify-ledger load chaos helm-deploy dlq-inspect tidy
+        verify-ledger load chaos helm-deploy dlq-inspect replay-projections tidy
+
+COMPOSE_OBS := docker compose -f deploy/compose/docker-compose.yml -f deploy/compose/compose.observability.yml
 
 up:
 	$(COMPOSE) --profile core up -d --build
 
-up-observability: ## obs profile (prometheus, grafana, jaeger) ships in M2
-	@echo "observability profile ships in M2 (see prompts/M2.md)"; exit 1
+up-observability:
+	$(COMPOSE_OBS) --profile core --profile obs up -d --build
 
 down:
-	$(COMPOSE) --profile core down -v
+	$(COMPOSE_OBS) --profile core --profile obs down -v
 
 demo:
 	bash scripts/demo.sh
@@ -30,8 +32,8 @@ test:
 test-integration:
 	@set -e; for m in $(IT_MODULES); do echo "--- go test -tags integration $$m"; (cd $$m && go test -tags integration -count=1 -timeout 20m ./...); done
 
-e2e: ## full cross-service e2e test ships in M2 (tests/e2e)
-	@echo "e2e suite ships in M2 (see prompts/M2.md)"; exit 1
+e2e: ## requires a running stack (make up)
+	cd tests/e2e && go test -tags e2e -count=1 -timeout 15m ./...
 
 lint:
 	buf lint
@@ -54,5 +56,8 @@ chaos: ## toxiproxy chaos demo ships in M3
 helm-deploy: ## helm + k3d ships in M3
 	@echo "helm deploy ships in M3 (see prompts/M3.md)"; exit 1
 
-dlq-inspect: ## DLQ wiring ships in M2
-	@echo "DLQ inspection ships in M2 (see prompts/M2.md)"; exit 1
+dlq-inspect:
+	bash scripts/dlq-inspect.sh
+
+replay-projections:
+	bash scripts/replay-projections.sh

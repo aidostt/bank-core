@@ -32,6 +32,8 @@ services:
       - --memory=1G
       - --kafka-addr=internal://0.0.0.0:9092,external://0.0.0.0:19092
       - --advertise-kafka-addr=internal://redpanda:9092,external://localhost:19092
+      - --set
+      - redpanda.auto_create_topics_enabled=true
     ports:
       - "19092:19092"
     volumes:
@@ -53,7 +55,7 @@ services:
     command:
       - >
         rpk topic create
-        ledger.transactions transfers.status accounts.events fraud.alerts
+        ledger.transactions transfers.status accounts.events fraud.alerts customers.registered
         --partitions 6 --replicas 1
         -X brokers=redpanda:9092 || true
     restart: "no"
@@ -93,12 +95,16 @@ services:
       IDENTITY_ACCESS_TOKEN_TTL: 15m
       IDENTITY_REFRESH_TOKEN_TTL: 720h
       IDENTITY_JWT_ISSUER: bank-core-identity
+      IDENTITY_KAFKA_BROKERS: redpanda:9092
+      IDENTITY_OTLP_ENDPOINT: jaeger:4317
     ports:
       - "8081:8081"
     volumes:
       - identity-keys:/keys
     depends_on:
       postgres:
+        condition: service_healthy
+      redpanda:
         condition: service_healthy
 
   account:
@@ -113,8 +119,12 @@ services:
       ACCOUNT_HTTP_ADDR: :8082
       ACCOUNT_DB_DSN: postgres://account_user:account_pass@postgres:5432/account_db?sslmode=disable
       ACCOUNT_LEDGER_ADDR: ledger:9093
+      ACCOUNT_KAFKA_BROKERS: redpanda:9092
+      ACCOUNT_OTLP_ENDPOINT: jaeger:4317
     depends_on:
       postgres:
+        condition: service_healthy
+      redpanda:
         condition: service_healthy
 
   ledger:
@@ -130,6 +140,7 @@ services:
       LEDGER_DB_DSN: postgres://ledger_user:ledger_pass@postgres:5432/ledger_db?sslmode=disable
       LEDGER_KAFKA_BROKERS: redpanda:9092
       LEDGER_HOLD_DEFAULT_TTL: 10m
+      LEDGER_OTLP_ENDPOINT: jaeger:4317
     depends_on:
       postgres:
         condition: service_healthy
@@ -152,6 +163,7 @@ services:
       TRANSFER_ACCOUNT_ADDR: account:9092
       TRANSFER_RECOVERY_INTERVAL: 5s
       TRANSFER_RECOVERY_STALE_AFTER: 15s
+      TRANSFER_OTLP_ENDPOINT: jaeger:4317
     depends_on:
       postgres:
         condition: service_healthy
@@ -174,6 +186,7 @@ services:
       GATEWAY_TRANSFER_ADDR: transfer:9094
       GATEWAY_RATE_LIMIT_READS_RPS: 10
       GATEWAY_RATE_LIMIT_TRANSFERS_RPS: 2
+      GATEWAY_OTLP_ENDPOINT: jaeger:4317
     ports:
       - "8080:8080"
     depends_on:
@@ -191,6 +204,9 @@ services:
     environment:
       LOG_LEVEL: info
       ANTIFRAUD_HTTP_ADDR: :8085
+      ANTIFRAUD_DB_DSN: postgres://antifraud_user:antifraud_pass@postgres:5432/antifraud_db?sslmode=disable
+      ANTIFRAUD_KAFKA_BROKERS: redpanda:9092
+      ANTIFRAUD_OTLP_ENDPOINT: jaeger:4317
     depends_on:
       postgres:
         condition: service_healthy
@@ -206,6 +222,9 @@ services:
     environment:
       LOG_LEVEL: info
       NOTIFICATION_HTTP_ADDR: :8086
+      NOTIFICATION_DB_DSN: postgres://notification_user:notification_pass@postgres:5432/notification_db?sslmode=disable
+      NOTIFICATION_KAFKA_BROKERS: redpanda:9092
+      NOTIFICATION_OTLP_ENDPOINT: jaeger:4317
     depends_on:
       postgres:
         condition: service_healthy
