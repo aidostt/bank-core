@@ -21,3 +21,7 @@ Thumbs.db
 # local tooling config
 .claude/
 CLAUDE.md
+
+# compiled binaries
+*.exe
+cmd.exe
