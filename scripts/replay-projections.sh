@@ -8,18 +8,26 @@ COMPOSE=(docker compose -f "$(dirname "$0")/../deploy/compose/docker-compose.yml
 
 echo "── replay-projections ──"
 
-echo "1. stopping account-service (consumer group must be empty to seek)"
+echo "1. stopping account-service and waiting for its group membership to lapse"
 "${COMPOSE[@]}" stop account >/dev/null
+# The group can only be deleted once it has no members; the coordinator only
+# drops a stopped member after its session times out (~30s), so wait for the
+# state to reach Empty/Dead before touching it.
+for i in $(seq 1 40); do
+  ST=$("${COMPOSE[@]}" exec -T redpanda rpk group describe account -X brokers=redpanda:9092 2>/dev/null | awk '/^STATE/{print $2}')
+  [ "$ST" = "Empty" ] || [ "$ST" = "Dead" ] || [ -z "$ST" ] && break
+  sleep 2
+done
+echo "   group state: ${ST:-gone}"
 
 echo "2. truncating the balances projection"
 "${COMPOSE[@]}" exec -T postgres psql -U account_user -d account_db -q \
   -c "TRUNCATE balances; DELETE FROM processed_messages WHERE consumer_group='account';"
 
-echo "3. rewinding consumer group 'account' to the start of ledger.transactions"
-"${COMPOSE[@]}" exec -T redpanda rpk group seek account --to start \
-  --topics ledger.transactions -X brokers=redpanda:9092
+echo "3. deleting consumer group 'account' (now empty)"
+"${COMPOSE[@]}" exec -T redpanda rpk group delete account -X brokers=redpanda:9092 2>/dev/null || true
 
-echo "4. starting account-service — replaying the full journal"
+echo "4. starting account-service — a fresh group replays the journal from offset 0"
 "${COMPOSE[@]}" start account >/dev/null
 
 echo "5. waiting for convergence (projection == ledger truth)"
