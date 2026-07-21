@@ -12,10 +12,9 @@ Users, credentials, tokens, sessions, roles. Related ADR: 0011.
   generated on first boot; `kid` = key fingerprint; rotation runbook in this doc.
 - Roles: `customer` by default; `support`/`admin` seeded via migration.
 - On successful registration emits `customers.registered` (outbox) — consumed by
-  account-service to prepare a customer record.
-  **M1 note:** the event and the identity outbox relay are deferred to M2 (as
-  allowed by prompts/M1.md); the `outbox` table already exists. Until then
-  account-service bootstraps the customer row lazily on first OpenAccount.
+  account-service to prepare a customer record. **M2 status:** live (event in
+  the registration tx + relay); account-service keeps its idempotent lazy
+  bootstrap as a fallback.
 
 ## gRPC API
 `Register, Login, Refresh, Logout, GetMe, ListSessions, RevokeSession, Seed roles

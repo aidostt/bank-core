@@ -3,13 +3,16 @@
 Account registry + balance projections. Registry writes are strongly consistent;
 balances are an eventually-consistent read model (ADR-0006).
 
-**M1 notes (per prompts/M1.md — projections/consumers are M2):**
-- The customer row is bootstrapped lazily on first `OpenAccount` (upsert by
-  user_id); M2 replaces this with the `customers.registered` consumer.
-- Balances in the read API are served by a synchronous ledger `GetBalances`
-  call until the M2 projection consumer lands (interim noted in ADR-0006).
-- `accounts.events` outbox emission ships in M2 together with the relay
-  (PLAN M1 wires relays in ledger+transfer only); the tables exist.
+**M2 status:** the projection consumer (version-guarded), the fraud-freeze
+consumer, the `customers.registered` bootstrap consumer and the
+`accounts.events` outbox+relay are live; the read API serves projected
+balances with `as_of`. The M1 lazy customer upsert remains as a harmless
+idempotent fallback.
+
+**M2 note on holds:** holds are not projected (TransactionPosted carries
+`{balance_after, version}` only), so the read API's `available` equals the
+settled balance; in-flight holds are visible only inside the ledger. Honest
+staleness applies: the `as_of` timestamp is the journal entry time.
 
 ## Responsibilities
 - Open account: generate account number (KZ-prefixed, check digit), currency

@@ -4,6 +4,9 @@ Async rule-based scoring. Consumes facts, emits alerts. No inline path (ADR-0010
 
 ## Responsibilities
 - Consume `transfers.status` (COMPLETED) and `ledger.transactions`.
+  **M2 note:** only `transfers.status` is consumed — all four shipped rules
+  are transfer-based; `ledger.transactions` subscription joins when a rule
+  needs raw postings (e.g. cash-structuring detection).
 - Maintain per-customer sliding stats in Postgres (`customer_stats`: counts/sums
   per window, updated in consumer tx).
 - Rules (config-driven, table `rules(id, kind, params jsonb, severity, enabled)`):

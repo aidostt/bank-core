@@ -8,6 +8,9 @@ implementation of the retry/DLQ consumer pattern — kept deliberately simple.
 - Render templates (Go text/template, per event type, RU/EN by user preference
   default EN) and "send" via a `Sender` interface: `log` implementation prints a
   structured line; SMTP stub behind the same interface (roadmap).
+  **M2 note:** EN templates only — there is no user-preference source until a
+  profile field exists (identity/roadmap); the template registry is keyed and
+  ready for per-locale variants.
 - Persist `notifications(id, user_id, channel, template, payload jsonb, status
   sent|failed, created_at)` — doubles as the user's notification feed (roadmap API).
 - Dedup, backoff retries, DLQ — via shared `pkg/kafka` consumer runtime.
