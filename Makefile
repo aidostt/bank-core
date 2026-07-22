@@ -29,6 +29,9 @@ verify-ledger:
 test:
 	@set -e; for m in $(MODULES); do echo "--- go test $$m"; (cd $$m && go test ./...); done
 
+coverage: ## cross-package coverage per module (needs Docker for integration tests)
+	bash scripts/coverage.sh
+
 test-integration:
 	@set -e; for m in $(IT_MODULES); do echo "--- go test -tags integration $$m"; (cd $$m && go test -tags integration -count=1 -timeout 20m ./...); done
 

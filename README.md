@@ -70,12 +70,32 @@ make test                # unit tests, every module
 make test-integration    # testcontainers: postgres + redpanda
 make e2e                 # full scenario incl. fraud freeze (stack must be up)
 make lint                # golangci-lint (depguard keeps domain packages stdlib-only) + buf lint
+make coverage            # honest cross-package coverage per module (table below)
 make verify-ledger       # double-entry reconciliation straight in ledger_db
 make load                # k6: transfers + reads (results below)
 make chaos               # cut transfer↔ledger mid-burst, prove recovery (transcript below)
 make replay-projections  # rebuild the balance read model from offset 0
 make helm-deploy         # k3d + umbrella chart + smoke (docs/deploy.md)
 ```
+
+### Coverage
+
+Real numbers from `make coverage` (cross-package via `-coverpkg`, so integration
+tests credit the adapters/stores they exercise; excludes `cmd/` DI wiring and
+generated sqlc code). Domain packages — the money invariants and the saga state
+machine — sit at **95–100%**; the per-module figure below is the whole module
+(domain + app + adapters):
+
+| module | coverage | module | coverage |
+|---|---|---|---|
+| antifraud | 86% | account | 78% |
+| pkg (shared) | 85% | notification | 78% |
+| ledger | 79% | gateway | 77% |
+| identity | 76% | transfer | 75% |
+
+The black-box `tests/e2e` suite exercises the full wiring end-to-end but runs
+out-of-process, so it does not register as Go statement coverage — the real
+exercised fraction is higher than these numbers show.
 
 ## What the demo proves
 
