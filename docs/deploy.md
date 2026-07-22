@@ -31,5 +31,26 @@ Chart shape (`deploy/helm/bank-core`):
   infra would come from operators/managed services anyway, which no local
   subchart honestly represents.
 
+### k3d operational notes (learned the hard way)
+
+- **k3s image is pinned to a cgroup-v1-compatible tag** (`rancher/k3s:v1.31.7-k3s1`,
+  overridable via `K3S_IMAGE`). k3d's default is the latest k3s, which dropped
+  cgroup v1; on a Docker host still running cgroup v1 (Docker Desktop / WSL2
+  without cgroupns) that kubelet refuses to start and the cluster never becomes
+  Ready. The pinned tag runs on both cgroup v1 and v2.
+- **No `k3d cluster create --wait`.** On Docker Desktop that flag can hang on its
+  post-start readiness probe; the script starts the nodes, merges the kubeconfig,
+  then polls `kubectl wait --for=condition=Ready nodes` itself (bounded).
+- **Infra images are imported from the local Docker cache**, not pulled inside the
+  cluster — pulling large images (redpanda) through k3d's containerd is slow and
+  flaky (TLS/i-o timeouts) on constrained networks and otherwise stalls the rollout.
+- **Services carry a `wait-for-infra` initContainer** (`nc -z postgres 5432 &&
+  nc -z redpanda 9092`) so they never CrashLoopBackOff while infra starts, keeping
+  `helm --wait` convergence clean.
+
+Verified end-to-end on k3d: all 10 pods Ready, and a smoke run
+(register → login → GET /customers/me → open account → top-up COMPLETED → the
+balance projection reflects the money) passes through the NodePort gateway.
+
 Not covered on purpose (roadmap): persistent volumes, per-service Postgres,
 ingress/TLS, OTel collector, Argo Rollouts.

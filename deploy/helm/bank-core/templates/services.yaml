@@ -23,6 +23,16 @@ spec:
         app.kubernetes.io/name: {{ $name }}
         {{- include "bank-core.labels" $ | nindent 8 }}
     spec:
+      # Gate startup on infra readiness so services never crash-loop while
+      # postgres/redpanda come up — the compose stack tolerates this via
+      # connect-retry, but on k8s an initContainer keeps the rollout clean
+      # (helm --wait converges without CrashLoopBackOff backoff delays).
+      initContainers:
+        - name: wait-for-infra
+          # Reuse an infra image already imported into the cluster (alpine's
+          # busybox provides nc) so the init step needs no extra image pull.
+          image: {{ $.Values.infra.redis.image }}
+          command: ["sh", "-c", "until nc -z postgres 5432 && nc -z redpanda 9092; do echo waiting for infra; sleep 2; done"]
       containers:
         - name: {{ $name }}
           image: "{{ $.Values.image.repository }}-{{ $name }}:{{ $.Values.image.tag }}"
